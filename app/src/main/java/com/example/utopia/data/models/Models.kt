@@ -35,9 +35,12 @@ enum class VisitBehavior { INSIDE, OUTSIDE, UNRESOLVED }
  */
 @Serializable
 enum class StructureType(
-    val width: Int, // Legacy visual width, may be deprecated
-    val height: Int, // Legacy visual height, may be deprecated
+    // TODO: These legacy fields should be audited and deprecated/removed.
+    val width: Int,
+    val height: Int,
     val behavior: PlacementBehavior,
+    // TODO: A developer must replace these placeholder values with the TRUE dimensions from the sprite assets.
+    // The goal is for the physical footprint to exactly match the visual sprite's cropped bounds.
     val footprintWidthTiles: Float,
     val footprintHeightTiles: Float,
     val jobSlots: Int = 0,
@@ -52,12 +55,12 @@ enum class StructureType(
 ) {
     ROAD(1, 1, PlacementBehavior.STROKE, 1.0f, 1.0f, baselineTileY = 0, footprintOffset = GridOffset(0, 0)),
     WALL(1, 1, PlacementBehavior.STROKE, 1.0f, 1.0f, baselineTileY = 0, footprintOffset = GridOffset(0, 0)),
-    HOUSE(3, 2, PlacementBehavior.STAMP, 3.4f, 2.4f, capacity = Constants.HOUSE_CAPACITY, baselineTileY = 2, footprintOffset = GridOffset(0, -2)),
-    STORE(2, 2, PlacementBehavior.STAMP, 2.4f, 2.4f, jobSlots = 2, baselineTileY = 2, footprintOffset = GridOffset(0, -1), outsideSlots = listOf(GridOffset(0, 3), GridOffset(2, 3))),
-    WORKSHOP(3, 2, PlacementBehavior.STAMP, 3.4f, 2.4f, jobSlots = 2, baselineTileY = 2, footprintOffset = GridOffset(0, -2), outsideSlots = listOf(GridOffset(0, 3), GridOffset(2, 3))),
-    CASTLE(4, 4, PlacementBehavior.STAMP, 4.5f, 4.5f, jobSlots = 4, baselineTileY = 4, footprintOffset = GridOffset(0, -2)),
+    HOUSE(3, 2, PlacementBehavior.STAMP, 3.3f, 2.5f, capacity = Constants.HOUSE_CAPACITY, baselineTileY = 2, footprintOffset = GridOffset(0, -2)),
+    STORE(2, 2, PlacementBehavior.STAMP, 2.8f, 2.6f, jobSlots = 2, baselineTileY = 2, footprintOffset = GridOffset(0, -1), outsideSlots = listOf(GridOffset(0, 3), GridOffset(2, 3))),
+    WORKSHOP(3, 2, PlacementBehavior.STAMP, 3.2f, 2.7f, jobSlots = 2, baselineTileY = 2, footprintOffset = GridOffset(0, -2), outsideSlots = listOf(GridOffset(0, 3), GridOffset(2, 3))),
+    CASTLE(4, 4, PlacementBehavior.STAMP, 4.5f, 4.8f, jobSlots = 4, baselineTileY = 4, footprintOffset = GridOffset(0, -2)),
     PLAZA(3, 2, PlacementBehavior.STAMP, 3.0f, 2.0f, baselineTileY = 3, footprintOffset = GridOffset(0, -2)),
-    TAVERN(3, 3, PlacementBehavior.STAMP, 3.4f, 3.4f, jobSlots = 2, isHotspot = true, capacity = 4, baselineTileY = 3, footprintOffset = GridOffset(0, -2), outsideSlots = listOf(GridOffset(0, 4), GridOffset(2, 4), GridOffset(1, 4), GridOffset(3, 4)));
+    TAVERN(3, 3, PlacementBehavior.STAMP, 3.6f, 3.2f, jobSlots = 2, isHotspot = true, capacity = 4, baselineTileY = 3, footprintOffset = GridOffset(0, -2), outsideSlots = listOf(GridOffset(0, 4), GridOffset(2, 4), GridOffset(1, 4), GridOffset(3, 4)));
 
     /** The physical width of the structure's footprint in world units. Used for collision and NavGrid baking. */
     val worldWidth: Float
