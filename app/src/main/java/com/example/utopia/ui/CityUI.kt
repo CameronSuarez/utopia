@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.example.utopia.R
 import com.example.utopia.data.models.*
+import com.example.utopia.debug.AgentLabelOverlay
 import com.example.utopia.util.Constants
 
 /**
@@ -212,6 +213,15 @@ fun CityScreen(viewModel: GameViewModel) {
                     navGrid = viewModel.navGrid,
                     showNavGrid = viewModel.showNavGridDebug
                 )
+
+                drawDebugLayers(
+                    viewModel = viewModel,
+                    agents = worldState.agents,
+                    structures = worldState.structures,
+                    props = worldState.props,
+                    tiles = worldState.tiles,
+                    camera = camera
+                )
             }
 
             if (pc.state != PlacementState.IDLE) {
@@ -220,32 +230,11 @@ fun CityScreen(viewModel: GameViewModel) {
 
             SelectionOverlay(viewModel)
 
-            // Lot Debug Overlay
-            if (viewModel.showLotDebug) {
-                LotDebugOverlay(
-                    tiles = worldState.tiles,
-                    cameraOffset = viewModel.cameraOffset,
-                    modifier = Modifier.matchParentSize()
-                )
-            }
-
-            // Hitbox Debug Overlay (now includes props)
-            if (viewModel.showHitboxesDebug) {
-                EntityHitboxDebugOverlay(
+            // Agent Label Overlay
+            if (viewModel.showAgentLabels) {
+                AgentLabelOverlay(
                     agents = worldState.agents,
-                    structures = worldState.structures,
-                    props = worldState.props, // Passed props list
-                    cameraOffset = viewModel.cameraOffset,
-                    modifier = Modifier.matchParentSize()
-                )
-            }
-
-            // Path Debug Overlay
-            if (viewModel.showAgentPaths) {
-                PathDebugOverlay(
-                    agents = worldState.agents,
-                    cameraOffset = viewModel.cameraOffset,
-                    modifier = Modifier.matchParentSize()
+                    cameraOffset = viewModel.cameraOffset
                 )
             }
         }

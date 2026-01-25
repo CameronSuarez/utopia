@@ -128,7 +128,7 @@ class WorldManager {
                 val tileRng = Random(seed.toLong())
 
                 val propType = when (tileRng.nextFloat()) {
-                    in 0.0f..0.02f -> PropType.TREE_1
+                    in 0.0f..0.01f -> PropType.TREE_1
                     else -> null
                 }
 

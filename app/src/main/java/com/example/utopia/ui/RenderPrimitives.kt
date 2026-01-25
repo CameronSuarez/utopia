@@ -9,8 +9,10 @@ import androidx.compose.ui.unit.Dp
 import com.example.utopia.data.models.AgentRuntime // ADDED: Required for agentHitBoundsWorld
 import com.example.utopia.data.models.Structure
 import com.example.utopia.data.models.StructureType // Add this import
+import com.example.utopia.domain.VisibleBounds
 import com.example.utopia.ui.StructureAssets
 import com.example.utopia.util.Constants
+import kotlin.math.floor
 
 
 data class Camera2D(
@@ -43,6 +45,28 @@ fun worldRectToScreenRect(worldRect: Rect, camera: Camera2D): Rect {
     return Rect(
         offset = worldToScreen(worldRect.topLeft, camera),
         size = worldSizeToScreen(worldRect.size, camera)
+    )
+}
+
+fun Camera2D.computeVisibleBounds(screenSize: Size): VisibleBounds {
+    val tileSize = Constants.TILE_SIZE
+    val (camX, camY) = -offset
+    val worldX = camX / zoom
+    val worldY = camY / zoom
+
+    val startX = floor(worldX / tileSize).toInt().coerceAtLeast(0)
+    val startY = floor(worldY / tileSize).toInt().coerceAtLeast(0)
+    
+    // Calculate how many tiles fit on screen
+    val tilesW = (screenSize.width / (tileSize * zoom)).toInt() + 2
+    val tilesH = (screenSize.height / (tileSize * zoom)).toInt() + 2
+    
+    // We don't have map size here easily without passing it, but coercion happens in usage
+    return VisibleBounds(
+        startX = startX,
+        startY = startY,
+        endX = startX + tilesW,
+        endY = startY + tilesH
     )
 }
 

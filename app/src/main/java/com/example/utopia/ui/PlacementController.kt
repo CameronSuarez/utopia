@@ -71,8 +71,8 @@ class PlacementController(
         val tileOffsetNudge = Constants.TILE_SIZE * 0.5f
 
         if (tool.behavior == PlacementBehavior.STAMP) {
-            val centeredScreenPos = screenPos - Offset(tool.worldWidth / 2f, tool.worldHeight / 2f)
-            pos = screenToWorld(centeredScreenPos, camera)
+            val anchoredScreenPos = screenPos - Offset(tool.worldWidth / 2f, tool.worldHeight)
+            pos = screenToWorld(anchoredScreenPos, camera)
             worldPos = pos
 
             state = PlacementState.DRAGGING_GHOST
@@ -106,8 +106,8 @@ class PlacementController(
         val tileOffsetNudge = Constants.TILE_SIZE * 0.5f
 
         if (tool.behavior == PlacementBehavior.STAMP) {
-            val centeredScreenPos = screenPos - Offset(tool.worldWidth / 2f, tool.worldHeight / 2f)
-            newWorldPos = screenToWorld(centeredScreenPos, camera)
+            val anchoredScreenPos = screenPos - Offset(tool.worldWidth / 2f, tool.worldHeight)
+            newWorldPos = screenToWorld(anchoredScreenPos, camera)
             worldPos = newWorldPos
         } else { // STROKE
             newWorldPos = rawWorldPos + Offset(tileOffsetNudge, tileOffsetNudge)

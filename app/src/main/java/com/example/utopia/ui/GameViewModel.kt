@@ -47,6 +47,7 @@ class GameViewModel : ViewModel() {
     var showHitboxesDebug by mutableStateOf(false)
     var showLotDebug by mutableStateOf(false) // Added for lot overlay
     var showAgentPaths by mutableStateOf(false)
+    var showAgentLabels by mutableStateOf(false)
     var showAgentClearanceDebug by mutableStateOf(false)
     var showAgentVectorsDebug by mutableStateOf(false)
 

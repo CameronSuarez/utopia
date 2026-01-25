@@ -222,6 +222,9 @@ fun DebugPanel(
         Button(onClick = { viewModel.showAgentPaths = !viewModel.showAgentPaths }) {
             Text(if (viewModel.showAgentPaths) "Hide Paths" else "Show Paths")
         }
+        Button(onClick = { viewModel.showAgentLabels = !viewModel.showAgentLabels }) {
+            Text(if (viewModel.showAgentLabels) "Hide Labels" else "Show Labels")
+        }
         Button(onClick = { viewModel.showAgentClearanceDebug = !viewModel.showAgentClearanceDebug }) {
             Text(if (viewModel.showAgentClearanceDebug) "Hide Clearance" else "Show Clearance")
         }

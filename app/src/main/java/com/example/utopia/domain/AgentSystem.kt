@@ -16,14 +16,19 @@ class AgentSystem(
 ) {
     internal var aiTickTimer = 0L
 
-    val telemetry = AgentTelemetry()
+    internal val telemetry = AgentTelemetry()
 
-    // Performance and Debug Stats
+    var numSocialBlockedByCooldown = 0
+    var numSocialBlockedByPhase = 0
+    var numSocialBlockedByState = 0
+    var numBumps = 0
+    var numSocialAttempted = 0
+    var numSocialTriggers = 0
     var pathfindCountThisSecond = 0
     var roadPathsCountThisSecond = 0
-    var navMaskPathsCountThisSecond = 0
     var offRoadFallbacksCountThisSecond = 0
-    var excursionsPerSec = 0
+    var numFriendChasesStarted = 0
+    var numFriendChasesAborted = 0
 
     internal var pathfindCountThisFrame = 0
     internal var lastDebugLogMs = 0L
@@ -75,20 +80,6 @@ class AgentSystem(
     internal var lastMorningDriftCycle = -1L
     internal var lastPhase: DayPhase? = null
 
-    // Telemetry Stats
-    var numSocialTriggers = 0
-    var numBumps = 0
-    var numFriendChasesStarted = 0
-    var numFriendChasesAborted = 0
-    var numSocialAttempted = 0
-    var numSocialBlockedByCooldown = 0
-    var numSocialBlockedByPhase = 0
-    var numSocialBlockedByState = 0
-    var numAtWorkIdle = 0
-    var numAtWorkWander = 0
-    var numGoalRetries = 0
-    var workDecisionTicks = 0L
-    var workDecisionTriggers = 0L
     val workActionCounts = mutableMapOf<WorkActionType, Int>()
 
     fun update(deltaTimeMs: Long) {
@@ -111,4 +102,11 @@ internal data class PhaseContext(
     val phase: DayPhase,
     val normalizedTime: Float,
     val cycleIndex: Long
+)
+
+data class VisibleBounds(
+    val startX: Int,
+    val startY: Int,
+    val endX: Int,
+    val endY: Int
 )

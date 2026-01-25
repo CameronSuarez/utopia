@@ -350,12 +350,9 @@ class NavGrid(val width: Int = Constants.MAP_TILES_W, val height: Int = Constant
         }
         val footprintHeight = footprintWidth * 0.5f
 
-        // Apply an upward shift of two full tile heights for accurate isometric alignment.
-        val verticalShift = if (type == PropType.TREE_1) Constants.TILE_SIZE * 2f else 0f
-
         val x = prop.anchorX - (footprintWidth / 2f) + (type.footprintOffset.x * Constants.TILE_SIZE)
-        // Shift up by two full tiles before accounting for footprint height
-        val y = prop.anchorY - verticalShift - footprintHeight + (type.footprintOffset.y * Constants.TILE_SIZE)
+        // Shift up accounting for footprint height
+        val y = prop.anchorY - footprintHeight + (type.footprintOffset.y * Constants.TILE_SIZE)
 
         return Rect(
             offset = Offset(x, y),
