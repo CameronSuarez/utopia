@@ -367,59 +367,70 @@ class WorldManager {
         assignJobs()
     }
 
+    /** Parallel authority for stroke-based structures (Roads, Walls). */
+    private fun bakeStrokeSegmentToWorld(currentState: WorldState, structure: Structure): WorldState {
+        val gx = structure.gridX
+        val gy = structure.gridY
+        
+        val newTiles = currentState.copyTiles()
+        
+        // 1. Clear props on the single tile.
+        val newProps = currentState.props.filterNot { prop ->
+            val isInside = prop.homeTileX == gx && (prop.homeTileY == gy || prop.homeTileY == gy + 1)
+            if (isInside) {
+                unionDirtyRect(Rect(
+                    (prop.homeTileX * Constants.TILE_SIZE).toFloat(),
+                    (prop.homeTileY * Constants.TILE_SIZE).toFloat(),
+                    ((prop.homeTileX + 1) * Constants.TILE_SIZE).toFloat(),
+                    ((prop.homeTileY + 1) * Constants.TILE_SIZE).toFloat()
+                ))
+            }
+            isInside
+        }
+
+        // 2. Apply the tile type.
+        applyStructureToTiles(newTiles, structure)
+
+        // 3. Mark dirty for NavGrid update.
+        unionDirtyRect(Rect(structure.x, structure.y, structure.x + Constants.TILE_SIZE, structure.y + Constants.TILE_SIZE))
+
+        return currentState.copy(
+            structures = currentState.structures + structure,
+            tiles = newTiles,
+            props = newProps
+        )
+    }
+
     fun tryPlaceStroke(type: StructureType, tiles: List<Pair<Int, Int>>): List<String> {
         if (tiles.isEmpty()) return emptyList()
 
-        val currentState = _worldState.value
-        val newTiles = currentState.copyTiles()
-        val newStructures = currentState.structures.toMutableList()
-        val newProps = currentState.props.toMutableList()
         val addedIds = mutableListOf<String>()
-
+        var currentState = _worldState.value
+        
         var changed = false
-        var roadChanged = false
-        var structChanged = false
         for ((gx, gy) in tiles) {
-            val wx = gx * Constants.TILE_SIZE
-            val wy = gy * Constants.TILE_SIZE
+            val wx = (gx * Constants.TILE_SIZE).toFloat()
+            val wy = (gy * Constants.TILE_SIZE).toFloat()
 
-            if (isAlreadyOccupiedBySameType(newTiles, type, gx, gy)) continue
+            if (isAlreadyOccupiedBySameType(currentState.tiles, type, gx, gy)) continue
 
             if (canPlaceInternal(currentState, type, wx, wy)) {
-                newProps.removeAll { prop -> 
-                    val isInside = prop.homeTileX == gx && (prop.homeTileY == gy || prop.homeTileY == gy + 1)
-                    if (isInside) {
-                         unionDirtyRect(Rect(
-                            prop.homeTileX * Constants.TILE_SIZE.toFloat(),
-                            prop.homeTileY * Constants.TILE_SIZE.toFloat(),
-                            (prop.homeTileX + 1) * Constants.TILE_SIZE.toFloat(),
-                            (prop.homeTileY + 1) * Constants.TILE_SIZE.toFloat()
-                        ))
-                    }
-                    isInside
-                }
-
-                val id = UUID.randomUUID().toString()
-                val s = Structure(id, type, wx, wy)
-                newStructures.add(s)
-                applyStructureToTiles(newTiles, s)
-                addedIds.add(id)
+                val newStructure = Structure(UUID.randomUUID().toString(), type, wx, wy)
+                currentState = bakeStrokeSegmentToWorld(currentState, newStructure)
+                addedIds.add(newStructure.id)
                 changed = true
-                if (type == StructureType.ROAD) roadChanged = true
-                else structChanged = true
-                
-                // Mark placed stroke tile as dirty
-                unionDirtyRect(Rect(wx, wy, wx + Constants.TILE_SIZE, wy + Constants.TILE_SIZE))
             } else if (type == StructureType.WALL) {
+                // Stop placing wall segments if one is blocked, to ensure contiguous walls.
                 break
             }
         }
 
         if (changed) {
+            // Batch update revisions and POIs after all segments are placed.
+            val roadChanged = type == StructureType.ROAD
+            val structChanged = type != StructureType.ROAD
+
             val newState = currentState.copy(
-                structures = newStructures,
-                tiles = newTiles,
-                props = newProps,
                 roadRevision = if (roadChanged) currentState.roadRevision + 1 else currentState.roadRevision,
                 structureRevision = if (structChanged) currentState.structureRevision + 1 else currentState.structureRevision
             )
@@ -431,6 +442,7 @@ class WorldManager {
         return addedIds
     }
 
+
     private fun applyStructureToTiles(tiles: Array<Array<TileType>>, s: Structure) {
         val tileType = when (s.type) {
             StructureType.ROAD -> TileType.ROAD
@@ -439,8 +451,8 @@ class WorldManager {
         }
         val gx = s.gridX
         val gy = s.gridY
-        for (ix in gx until gx + s.type.width) {
-            for (iy in gy until gy + s.type.height) {
+        for (ix in gx until gx + s.type.footprintWidthTiles.toInt()) {
+            for (iy in gy until gy + s.type.footprintHeightTiles.toInt()) {
                 if (ix in 0 until Constants.MAP_TILES_W && iy in 0 until Constants.MAP_TILES_H) {
                     tiles[ix][iy] = tileType
                 }
@@ -483,8 +495,8 @@ class WorldManager {
             else -> return false
         }
 
-        for (ix in gx until gx + type.width) {
-            for (iy in gy until gy + type.height) {
+        for (ix in gx until gx + type.footprintWidthTiles.toInt()) {
+            for (iy in gy until gy + type.footprintHeightTiles.toInt()) {
                 if (ix in 0 until Constants.MAP_TILES_W && iy in 0 until Constants.MAP_TILES_H) {
                     if (tiles[ix][iy] != targetType) return false
                 }
