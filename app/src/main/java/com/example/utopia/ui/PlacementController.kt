@@ -18,6 +18,24 @@ enum class PlacementState {
     BRUSHING
 }
 
+/**
+ * Manages the UI state for placing and moving structures in the world.
+ *
+ * ARCHITECTURAL CONTRACT:
+ * This controller is the primary interface between the UI and the WorldManager for structure placement.
+ * It is responsible for translating screen gestures into world commands.
+ *
+ * FUTURE WORK (Option B from analysis):
+ * A single, authoritative function (e.g., `WorldManager.BakeBuildingToWorld`) should be created
+ * to handle all world state mutations related to placing a building. This function will be
+ * responsible for:
+ * 1.  Clearing props within the building's larger "influence area" (defined by lot tiles).
+ * 2.  Blocking the NavGrid based on the building's smaller "physical footprint" (the hitbox).
+ * 3.  Claiming lot tiles to enforce spacing and ownership rules.
+ *
+ * This controller will then call that single function, ensuring all placements are consistent
+ * and preventing logic from being scattered.
+ */
 class PlacementController(
     private val worldManager: WorldManager,
     private val onWorldChanged: () -> Unit

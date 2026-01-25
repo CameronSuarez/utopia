@@ -330,14 +330,11 @@ class NavGrid(val width: Int = Constants.MAP_TILES_W, val height: Int = Constant
 
     private fun getStructureFootprint(structure: Structure): Rect {
         val type = structure.type
-        val footprintHeight = Constants.TILE_SIZE * 0.2f // Make it 40% of a tile high
-
-        val x = structure.x + (type.footprintOffset.x * Constants.TILE_SIZE)
-        val y = structure.y + type.worldHeight - footprintHeight + (type.footprintOffset.y * Constants.TILE_SIZE)
-
+        // The footprint for navgrid blocking must match the structure's full world bounds
+        // exactly, as defined by its type. The structure's (x,y) is the top-left anchor.
         return Rect(
-            offset = Offset(x, y),
-            size = Size(type.worldWidth, footprintHeight)
+            offset = Offset(structure.x, structure.y),
+            size = Size(type.worldWidth, type.worldHeight)
         )
     }
 

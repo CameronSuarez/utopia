@@ -19,7 +19,10 @@ import kotlin.random.Random
  * This is the single source of truth for world mutation.
  */
 private const val WORLD_SEED = 12345L
-private const val LOT_CLEARANCE_PAD = 2 // Moderate pad for lot area and prop clearance.
+// Defines the margin (in tiles) around a building's physical footprint to determine its influence/ownership area.
+private const val OWNERSHIP_MARGIN_X = 2 // Horizontal margin
+private const val OWNERSHIP_MARGIN_Y = 3 // Vertical margin (larger to ensure space at the front/back)
+
 
 class WorldManager {
     val random = Random(WORLD_SEED)
@@ -191,92 +194,74 @@ class WorldManager {
         staticLayerId++
     }
 
-    fun tryPlaceStamp(type: StructureType, x: Float, y: Float, existingStructure: Structure? = null): String? {
-        if (!canPlaceInternal(_worldState.value, type, x, y, isMoving = existingStructure != null)) return null
+    /**
+     * The authoritative function for adding a stamp-based structure to the world.
+     * This function enforces the architectural contract for world mutation.
+     */
+    private fun bakeStructureToWorld(
+        currentState: WorldState,
+        structure: Structure
+    ): WorldState {
+        // Mark the new physical footprint area as dirty for NavGrid update.
+        unionDirtyRect(Rect(offset = Offset(structure.x, structure.y), size = Size(structure.type.worldWidth, structure.type.worldHeight)))
 
-        val newStructure = existingStructure?.copy(x = x, y = y) ?: Structure(UUID.randomUUID().toString(), type, x, y)
-        val id = newStructure.id
-
-        // Mark the new placement area as dirty
-        unionDirtyRect(Rect(offset = Offset(x, y), size = Size(type.worldWidth, type.worldHeight)))
-
-        val currentState = _worldState.value
         val newTiles = currentState.copyTiles()
 
-        val newProps = if (type.behavior == PlacementBehavior.STAMP) {
-            val pad = LOT_CLEARANCE_PAD
-            val structGX = newStructure.gridX
-            val structGY = newStructure.gridY
-            val structureWidth = newStructure.type.width
-            val structureHeight = newStructure.type.height
+        // --- Step 1: Define Influence Area (Lot) using Margins ---
+        // The influence area is larger than the physical footprint, used for clearing props and claiming land.
+        val footprintMinX = (structure.x / Constants.TILE_SIZE).toInt()
+        val footprintMinY = (structure.y / Constants.TILE_SIZE).toInt()
+        val footprintMaxX = ((structure.x + structure.type.worldWidth - 1f) / Constants.TILE_SIZE).toInt()
+        val footprintMaxY = ((structure.y + structure.type.worldHeight - 1f) / Constants.TILE_SIZE).toInt()
 
-            val lotMinX = structGX - pad
-            val lotMinY = structGY - pad
-            val lotMaxX = structGX + structureWidth - 1 + pad
-            val lotMaxY = structGY + structureHeight - 1 + pad
+        val lotMinX = footprintMinX - OWNERSHIP_MARGIN_X
+        val lotMinY = footprintMinY - OWNERSHIP_MARGIN_Y
+        val lotMaxX = footprintMaxX + OWNERSHIP_MARGIN_X
+        val lotMaxY = footprintMaxY + OWNERSHIP_MARGIN_Y
 
-            currentState.props.filterNot { prop ->
-                getPropFootprintTiles(prop).any { (propTileX, propTileY) ->
-                    val isInside = propTileX in lotMinX..lotMaxX && propTileY in lotMinY..lotMaxY
-                    if (isInside) {
-                        // Mark removed prop area as dirty (conservatively using a full tile)
-                        unionDirtyRect(Rect(
-                            propTileX * Constants.TILE_SIZE.toFloat(),
-                            propTileY * Constants.TILE_SIZE.toFloat(),
-                            (propTileX + 1) * Constants.TILE_SIZE.toFloat(),
-                            (propTileY + 1) * Constants.TILE_SIZE.toFloat()
-                        ))
-                    }
-                    isInside
-                }
-            }
-        } else {
-            val gx = newStructure.gridX
-            val gy = newStructure.gridY
-            currentState.props.filterNot { prop ->
-                val isInside = prop.homeTileX == gx && (prop.homeTileY == gy || prop.homeTileY == gy + 1)
+
+        // --- Step 2: Clear Props within Influence Area ---
+        val newProps = currentState.props.filterNot { prop ->
+            // Check if any part of the prop's footprint falls within the lot's influence area.
+            getPropFootprintTiles(prop).any { (propTileX, propTileY) ->
+                val isInside = propTileX in lotMinX..lotMaxX && propTileY in lotMinY..lotMaxY
                 if (isInside) {
+                    // Mark removed prop area as dirty (conservatively using a full tile).
                     unionDirtyRect(Rect(
-                        prop.homeTileX * Constants.TILE_SIZE.toFloat(),
-                        prop.homeTileY * Constants.TILE_SIZE.toFloat(),
-                        (prop.homeTileX + 1) * Constants.TILE_SIZE.toFloat(),
-                        (prop.homeTileY + 1) * Constants.TILE_SIZE.toFloat()
+                        propTileX * Constants.TILE_SIZE.toFloat(),
+                        propTileY * Constants.TILE_SIZE.toFloat(),
+                        (propTileX + 1) * Constants.TILE_SIZE.toFloat(),
+                        (propTileY + 1) * Constants.TILE_SIZE.toFloat()
                     ))
                 }
                 isInside
             }
         }
 
-        var newRoadRevision = currentState.roadRevision
-        var newStructRevision = currentState.structureRevision
+        // --- Step 3: Claim Lot Tiles and Apply Physical Footprint ---
+        // Claim the larger influence area as BUILDING_LOT.
+        markLot(newTiles, lotMinX, lotMinY, lotMaxX, lotMaxY)
 
-        when (type) {
-            StructureType.ROAD -> {
-                applyStructureToTiles(newTiles, newStructure)
-                newRoadRevision++
-            }
-            StructureType.WALL -> {
-                applyStructureToTiles(newTiles, newStructure)
-                newStructRevision++
-            }
-            StructureType.PLAZA -> {
-                markFootprint(newTiles, newStructure, TileType.PLAZA)
-                newStructRevision++
-            }
-            else -> {
-                markLot(newTiles, newStructure)
-                newStructRevision++
-            }
-        }
+        // Apply the specific tile type for the physical footprint (e.g., PLAZA or BUILDING_SOLID).
+        val footprintTile = if (structure.type == StructureType.PLAZA) TileType.PLAZA else TileType.BUILDING_SOLID
+        markFootprint(newTiles, structure, footprintTile)
 
-        val newState = currentState.copy(
-            structures = currentState.structures + newStructure,
+        // --- Final Step: Update World State ---
+        return currentState.copy(
+            structures = currentState.structures + structure,
             tiles = newTiles,
             props = newProps,
-            roadRevision = newRoadRevision,
-            structureRevision = newStructRevision,
+            structureRevision = currentState.structureRevision + 1,
             version = currentState.version + 1
         )
+    }
+
+    fun tryPlaceStamp(type: StructureType, x: Float, y: Float, existingStructure: Structure? = null): String? {
+        if (!canPlaceInternal(_worldState.value, type, x, y, isMoving = existingStructure != null)) return null
+
+        val newStructure = existingStructure?.copy(x = x, y = y) ?: Structure(UUID.randomUUID().toString(), type, x, y)
+        
+        val newState = bakeStructureToWorld(_worldState.value, newStructure)
 
         _worldState.value = newState.copy(pois = generatePOIs(newState))
         staticLayerId++
@@ -290,7 +275,7 @@ class WorldManager {
         }
 
         validateInvariants()
-        return id
+        return newStructure.id
     }
 
     private fun getPropFootprintTiles(prop: PropInstance): List<Pair<Int, Int>> {
@@ -463,13 +448,7 @@ class WorldManager {
         }
     }
 
-    private fun markLot(tiles: Array<Array<TileType>>, s: Structure) {
-        val pad = LOT_CLEARANCE_PAD
-        val minX = (s.x / Constants.TILE_SIZE).toInt() - pad
-        val minY = (s.y / Constants.TILE_SIZE).toInt() - pad
-        val maxX = ((s.x + s.type.worldWidth - 1f) / Constants.TILE_SIZE).toInt() + pad
-        val maxY = ((s.y + s.type.worldHeight - 1f) / Constants.TILE_SIZE).toInt() + pad
-
+    private fun markLot(tiles: Array<Array<TileType>>, minX: Int, minY: Int, maxX: Int, maxY: Int) {
         for (ix in minX..maxX) {
             for (iy in minY..maxY) {
                 if (ix in 0 until Constants.MAP_TILES_W && iy in 0 until Constants.MAP_TILES_H) {

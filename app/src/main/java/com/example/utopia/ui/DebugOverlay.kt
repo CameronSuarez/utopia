@@ -22,6 +22,13 @@ import com.example.utopia.domain.NavGrid
 import com.example.utopia.util.Constants
 import kotlin.math.floor
 
+/**
+ * [RED/GREEN/BLUE] Visualizes the NavGrid: the AI's understanding of the world for pathfinding.
+ * - RED: Blocked tiles. Agents cannot path through these.
+ * - GREEN: Walkable tiles.
+ * - BLUE: Road tiles (walkable, but with a different pathfinding cost).
+ * This overlay should align perfectly with the physical footprints shown in EntityHitboxDebugOverlay.
+ */
 @Composable
 fun NavGridDebugOverlay(
     navGrid: NavGrid,
@@ -39,7 +46,7 @@ fun NavGridDebugOverlay(
 
         for (x in startX until endX) {
             for (y in startY until endY) {
-                val tileValue = navGrid.grid[x][y]
+                val tileValue = navGrid.grid.getOrNull(x)?.getOrNull(y) ?: continue
                 val color = when (tileValue.toInt()) {
                     0 -> Color.Red.copy(alpha = 0.4f)       // Blocked
                     1 -> Color.Green.copy(alpha = 0.4f)     // Walkable
@@ -55,14 +62,17 @@ fun NavGridDebugOverlay(
                 }
 
                 // New: Visualize Clearance Field (Heatmap)
-                val clearance = navGrid.clearanceGrid[x * navGrid.height + y]
-                if (clearance < 10 && tileValue > 0) {
-                    val alpha = (0.3f * (1f - clearance / 10f)).coerceIn(0f, 0.3f)
-                    drawRect(
-                        color = Color.Blue.copy(alpha = alpha),
-                        topLeft = Offset(x * navGridTileSize + cameraOffset.x, y * navGridTileSize + cameraOffset.y),
-                        size = Size(navGridTileSize, navGridTileSize)
-                    )
+                val clearanceIndex = x * navGrid.height + y
+                if (clearanceIndex < navGrid.clearanceGrid.size) {
+                    val clearance = navGrid.clearanceGrid[clearanceIndex]
+                    if (clearance < 10 && tileValue > 0) {
+                        val alpha = (0.3f * (1f - clearance / 10f)).coerceIn(0f, 0.3f)
+                        drawRect(
+                            color = Color.Blue.copy(alpha = alpha),
+                            topLeft = Offset(x * navGridTileSize + cameraOffset.x, y * navGridTileSize + cameraOffset.y),
+                            size = Size(navGridTileSize, navGridTileSize)
+                        )
+                    }
                 }
             }
         }
@@ -75,6 +85,12 @@ fun NavGridDebugOverlay(
     }
 }
 
+/**
+ * [MAGENTA] Visualizes the "Influence Area" or "Zoning" layer.
+ * This shows which tiles are designated as `BUILDING_LOT`. It represents the potential of the
+ * land and is used for placement rules, spacing, and clearing props. It is intentionally
+ * larger than the physical building footprint.
+ */
 @Composable
 fun LotDebugOverlay(
     tiles: Array<Array<TileType>>,
@@ -162,6 +178,12 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDebugVector(
     drawCircle(color = color, center = end, radius = 2.dp.toPx())
 }
 
+/**
+ * [YELLOW] Visualizes the "Physical Footprint" or "Hitbox" of entities.
+ * This represents the solid foundation of structures used for collision, interaction, and as
+ * the source for NavGrid baking. It is allowed to be smaller than the visual sprite to
+ * permit aesthetic overhangs.
+ */
 @Composable
 fun EntityHitboxDebugOverlay(
     agents: List<AgentRuntime>,
