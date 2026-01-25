@@ -25,204 +25,64 @@ data class StructureAssets(
     val plazaBitmap: ImageBitmap
 )
 
+/**
+ * Renders a single structure.
+ *
+ * ANCHOR CONTRACT: This function assumes the `structure.x`, `structure.y` coordinates
+ * represent the BOTTOM-LEFT anchor of the structure's sprite in world space.
+ * All rendering calculations are performed relative to this point.
+ */
 fun DrawScope.drawStructureItem(
     structure: Structure,
     camera: Camera2D,
     assets: StructureAssets,
     agentNameById: Map<String, String>
 ) {
-    val screenPos = worldToScreen(Offset(structure.x, structure.y), camera)
-    val screenSize = worldSizeToScreen(Size(structure.type.worldWidth, structure.type.worldHeight), camera)
+    // Authoritative dimensions from the data model
+    val worldW = structure.type.worldWidth
+    val worldH = structure.type.worldHeight
 
+    // ANCHOR CONVERSION: The structure's (x,y) is the bottom-left. To draw, we need the top-left.
+    val worldDrawX = structure.x
+    val worldDrawY = structure.y - worldH
+
+    // Convert world coordinates and size to screen space for culling and drawing.
+    val screenPos = worldToScreen(Offset(worldDrawX, worldDrawY), camera)
+    val screenSize = worldSizeToScreen(Size(worldW, worldH), camera)
+
+    // Culling
     if (screenPos.x + screenSize.width < 0f || screenPos.x > size.width || screenPos.y + screenSize.height < 0f || screenPos.y > size.height) return
 
-    val rng = Random(structure.id.hashCode().toLong())
+    val bitmap: ImageBitmap? = when (structure.type) {
+        StructureType.HOUSE -> assets.houseBitmap
+        StructureType.STORE -> assets.storeBitmap
+        StructureType.WORKSHOP -> assets.workshopBitmap
+        StructureType.PLAZA -> assets.plazaBitmap
+        StructureType.TAVERN -> assets.tavernBitmap
+        else -> null
+    }
 
-    when (structure.type) {
-        StructureType.HOUSE -> {
-            val bitmap = assets.houseBitmap
-            val baseW = structure.type.worldWidth
-            val baseH = structure.type.worldHeight
+    if (bitmap != null) {
+        drawStructureBitmap(bitmap, screenPos, screenSize)
 
-            val bmpW = bitmap.width.toFloat()
-            val bmpH = bitmap.height.toFloat()
-
-            // Scale uniformly so the sprite fits inside the logical world box.
-            val s = minOf(baseW / bmpW, baseH / bmpH)
-
-            // If you want a bit wider, nudge here (minor art tweak)
-            val sx = s * 1.08f   // try 1.05–1.12
-            val sy = s * 1.15f   // try 1.10–1.25 (fix “too low”)
-
-            // Final draw size (preserves aspect, then applies small nudges) in WORLD UNITS
-            val worldDstW = bmpW * sx
-            val worldDstH = bmpH * sy
-
-            val VISUAL_MULT = 2f
-            val dstWf = worldDstW * VISUAL_MULT
-            val dstHf = worldDstH * VISUAL_MULT
-
-            // Anchor on the building’s baseline (bottom-ish), not top-left
-            // This is the WORLD coordinate of the sprite's top-left corner
-            val worldDrawX = structure.x + (baseW - dstWf) * 0.5f
-            val worldDrawY = structure.y + structure.type.baselineWorld - dstHf
-
-            // Convert world units to screen units for drawing
-            val screenDrawSize = Size(dstWf * camera.zoom, dstHf * camera.zoom)
-            val screenDrawOffset = worldToScreen(Offset(worldDrawX, worldDrawY), camera)
-
-            drawStructureBitmap(bitmap, screenDrawOffset, screenDrawSize)
-
+        if (structure.type == StructureType.HOUSE) {
             val ownerLabel = structure.customName ?: structure.residents.firstOrNull()?.let { agentNameById[it] }?.let { "${it}'s House" }
             val label = ownerLabel ?: "House"
             val labelX = screenPos.x + screenSize.width / 2f
-            val labelY = screenDrawOffset.y - 6f
+            val labelY = screenPos.y - 6f
             drawContext.canvas.nativeCanvas.drawText(label, labelX, labelY, assets.houseLabelPaint)
         }
-        StructureType.STORE -> {
-            val bitmap = assets.storeBitmap
-            val baseW = structure.type.worldWidth
-            val baseH = structure.type.worldHeight
-
-            val bmpW = bitmap.width.toFloat()
-            val bmpH = bitmap.height.toFloat()
-
-            // Scale uniformly so the sprite fits inside the logical world box.
-            val s = minOf(baseW / bmpW, baseH / bmpH)
-
-            // If you want a bit wider, nudge here (minor art tweak)
-            val sx = s * 1.08f
-            val sy = s * 1.15f
-
-            // Final draw size (preserves aspect, then applies small nudges) in WORLD UNITS
-            val worldDstW = bmpW * sx
-            val worldDstH = bmpH * sy
-
-            val VISUAL_MULT = 2f
-            val dstWf = worldDstW * VISUAL_MULT
-            val dstHf = worldDstH * VISUAL_MULT
-
-            // Anchor on the building’s baseline (bottom-ish), not top-left
-            val worldDrawX = structure.x + (baseW - dstWf) * 0.5f
-            val worldDrawY = structure.y + structure.type.baselineWorld - dstHf
-
-            // Convert world units to screen units for drawing
-            val screenDrawSize = Size(dstWf * camera.zoom, dstHf * camera.zoom)
-            val screenDrawOffset = worldToScreen(Offset(worldDrawX, worldDrawY), camera)
-
-            drawStructureBitmap(bitmap, screenDrawOffset, screenDrawSize)
-        }
-        StructureType.WORKSHOP -> {
-            val bitmap = assets.workshopBitmap
-            val baseW = structure.type.worldWidth
-            val baseH = structure.type.worldHeight
-
-            val bmpW = bitmap.width.toFloat()
-            val bmpH = bitmap.height.toFloat()
-
-            // Scale uniformly so the sprite fits inside the logical world box.
-            val s = minOf(baseW / bmpW, baseH / bmpH)
-
-            // If you want a bit wider, nudge here (minor art tweak)
-            val sx = s * 1.08f
-            val sy = s * 1.15f
-
-            // Final draw size (preserves aspect, then applies small nudges) in WORLD UNITS
-            val worldDstW = bmpW * sx
-            val worldDstH = bmpH * sy
-
-            val VISUAL_MULT = 2f
-            val dstWf = worldDstW * VISUAL_MULT
-            val dstHf = worldDstH * VISUAL_MULT
-
-            // Anchor on the building’s baseline (bottom-ish), not top-left
-            val worldDrawX = structure.x + (baseW - dstWf) * 0.5f
-            val worldDrawY = structure.y + structure.type.baselineWorld - dstHf
-
-            // Convert world units to screen units for drawing
-            val screenDrawSize = Size(dstWf * camera.zoom, dstHf * camera.zoom)
-            val screenDrawOffset = worldToScreen(Offset(worldDrawX, worldDrawY), camera)
-
-            drawStructureBitmap(bitmap, screenDrawOffset, screenDrawSize)
-        }
-        StructureType.CASTLE -> drawMedievalCastle(screenPos, screenSize.width, screenSize.height, rng)
-        StructureType.PLAZA -> {
-            val bitmap = assets.plazaBitmap
-            val baseW = structure.type.worldWidth
-            val baseH = structure.type.worldHeight
-
-            val bmpW = bitmap.width.toFloat()
-            val bmpH = bitmap.height.toFloat()
-
-            // Scale uniformly so the sprite fits inside the logical world box.
-            val s = minOf(baseW / bmpW, baseH / bmpH)
-
-            // If you want a bit wider, nudge here (minor art tweak)
-            val sx = s * 1.08f
-            val sy = s * 1.15f
-
-            // Final draw size (preserves aspect, then applies small nudges) in WORLD UNITS
-            val worldDstW = bmpW * sx
-            val worldDstH = bmpH * sy
-
-            val VISUAL_MULT = 2f
-            val dstWf = worldDstW * VISUAL_MULT
-            val dstHf = worldDstH * VISUAL_MULT
-
-            // Anchor on the building’s baseline (bottom-ish), not top-left
-            val worldDrawX = structure.x + (baseW - dstWf) * 0.5f
-            val worldDrawY = structure.y + structure.type.baselineWorld - dstHf
-
-            // Convert world units to screen units for drawing
-            val screenDrawSize = Size(dstWf * camera.zoom, dstHf * camera.zoom)
-            val screenDrawOffset = worldToScreen(Offset(worldDrawX, worldDrawY), camera)
-
-            drawStructureBitmap(bitmap, screenDrawOffset, screenDrawSize)
-        }
-        StructureType.TAVERN -> {
-            val bitmap = assets.tavernBitmap
-            val baseW = structure.type.worldWidth
-            val baseH = structure.type.worldHeight
-
-            val bmpW = bitmap.width.toFloat()
-            val bmpH = bitmap.height.toFloat()
-
-            // Scale uniformly so the sprite fits inside the logical world box.
-            val s = minOf(baseW / bmpW, baseH / bmpH)
-
-            // If you want a bit wider, nudge here (minor art tweak)
-            val sx = s * 1.08f
-            val sy = s * 1.15f
-
-            // Final draw size (preserves aspect, then applies small nudges) in WORLD UNITS
-            val worldDstW = bmpW * sx
-            val worldDstH = bmpH * sy
-
-            val VISUAL_MULT = 2f
-            val dstWf = worldDstW * VISUAL_MULT
-            val dstHf = worldDstH * VISUAL_MULT
-
-            // Anchor on the building’s baseline (bottom-ish), not top-left
-            val worldDrawX = structure.x + (baseW - dstWf) * 0.5f
-            val worldDrawY = structure.y + structure.type.baselineWorld - dstHf
-
-            // Convert world units to screen units for drawing
-            val screenDrawSize = Size(dstWf * camera.zoom, dstHf * camera.zoom)
-            val screenDrawOffset = worldToScreen(Offset(worldDrawX, worldDrawY), camera)
-
-            drawStructureBitmap(bitmap, screenDrawOffset, screenDrawSize)
-        }
-        // ROAD is handled via RoadCache and RoadPrimitives.
-        // It is explicitly excluded from StructureRenderer to maintain layer integrity.
-        else -> {
-            val color = when (structure.type) {
-                StructureType.WALL -> Color(0xFF795548)
-                else -> Color(0xFF9CCC65)
-            }
-            drawRect(color, screenPos, Size(screenSize.width - 1, screenSize.height - 1))
+    } else {
+        // Fallback for structures without bitmaps
+        val rng = Random(structure.id.hashCode().toLong())
+        when (structure.type) {
+            StructureType.CASTLE -> drawMedievalCastle(screenPos, screenSize.width, screenSize.height, rng)
+            StructureType.WALL -> drawRect(Color(0xFF795548), screenPos, Size(screenSize.width - 1, screenSize.height - 1))
+            else -> drawRect(Color(0xFF9CCC65), screenPos, Size(screenSize.width - 1, screenSize.height - 1))
         }
     }
 }
+
 
 private fun DrawScope.drawStructureBitmap(bitmap: ImageBitmap, pos: Offset, size: Size) {
     val dstOffset = IntOffset(pos.x.toInt(), pos.y.toInt())

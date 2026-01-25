@@ -328,12 +328,16 @@ class NavGrid(val width: Int = Constants.MAP_TILES_W, val height: Int = Constant
         )
     }
 
+    /**
+     * Calculates the physical footprint rectangle for a structure.
+     * ANCHOR CONTRACT: Assumes the structure's (x, y) is its BOTTOM-LEFT corner.
+     */
     private fun getStructureFootprint(structure: Structure): Rect {
         val type = structure.type
-        // The footprint for navgrid blocking must match the structure's full world bounds
-        // exactly, as defined by its type. The structure's (x,y) is the top-left anchor.
+        // FIX: The structure's (x,y) is the BOTTOM-LEFT. 
+        // Compose Rect expects TOP-LEFT for its offset.
         return Rect(
-            offset = Offset(structure.x, structure.y),
+            offset = Offset(structure.x, structure.y - type.worldHeight),
             size = Size(type.worldWidth, type.worldHeight)
         )
     }

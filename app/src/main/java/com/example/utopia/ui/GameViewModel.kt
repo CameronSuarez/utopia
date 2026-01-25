@@ -21,8 +21,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class GameViewModel : ViewModel() {
-    val worldManager = WorldManager()
     val navGrid = NavGrid()
+    val worldManager = WorldManager(navGrid)
     val agentSystem = AgentSystem(worldManager, worldManager.random, navGrid)
     // Note: placementController now doesn't strictly need to trigger updateNavGrid immediately,
     // as the game loop will catch the dirty rect and update it batch-style.

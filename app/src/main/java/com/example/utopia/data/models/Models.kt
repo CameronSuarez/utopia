@@ -1,16 +1,17 @@
 package com.example.utopia.data.models
 
-import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.Offset
 import com.example.utopia.util.Constants
 import kotlinx.serialization.Serializable
+
+// Constants
+private const val TILE_PIXEL_SIZE = 16f // The dimension of one tile in pixels, for converting sprite art to world units.
 
 @Serializable
 enum class TileType {
     GRASS_LIGHT, GRASS_DARK, GRASS_DARK_TUFT, ROAD, WALL, BUILDING_FOOTPRINT, PLAZA, PROP_BLOCKED, BUILDING_LOT, BUILDING_SOLID;
 
     val isGrass: Boolean get() = this == GRASS_LIGHT || this == GRASS_DARK || this == GRASS_DARK_TUFT
-    val isVisualGrass: Boolean get() = isGrass || this == PROP_BLOCKED
 }
 
 @Serializable
@@ -19,56 +20,47 @@ enum class PlacementBehavior { STAMP, STROKE }
 @Serializable
 data class GridOffset(val x: Int, val y: Int)
 
-@Serializable
-enum class VisitBehavior { INSIDE, OUTSIDE, UNRESOLVED }
-
 /**
  * Defines the static properties of a structure type.
  *
  * ARCHITECTURAL CONTRACT:
- * - Footprint Authority: `footprintWidthTiles` and `footprintHeightTiles` define the authoritative physical
- *   footprint of the structure, in tile units. This data should correspond to the full visual bounds of the sprite.
+ * - Anchor: A structure's (x, y) position is its BOTTOM-LEFT corner in world space.
+ * - Footprint Authority: `spriteWidthPx` and `spriteHeightPx` define the authoritative physical
+ *   footprint of the structure, in PIXELS. This data must correspond to the full visual bounds of the sprite asset.
  *   This is the rectangle used for NavGrid blocking and physical interaction.
- * - Influence Area: The area a building claims for spacing, prop deletion, and gameplay
- *   rules is defined at the placement layer (e.g., in WorldManager) and is intentionally
- *   larger than the physical footprint. It is calculated using configurable margins.
+ * - Influence Area: The area a building claims for spacing is defined at the placement layer (WorldManager)
+ *   and is intentionally larger than the physical footprint.
  */
 @Serializable
 enum class StructureType(
-    // TODO: These legacy fields should be audited and deprecated/removed.
-    val width: Int,
-    val height: Int,
     val behavior: PlacementBehavior,
-    // TODO: A developer must replace these placeholder values with the TRUE dimensions from the sprite assets.
-    // The goal is for the physical footprint to exactly match the visual sprite's cropped bounds.
-    val footprintWidthTiles: Float,
-    val footprintHeightTiles: Float,
+    // TODO: A developer must replace these placeholder values with the TRUE pixel dimensions from the sprite assets.
+    val spriteWidthPx: Float,
+    val spriteHeightPx: Float,
     val jobSlots: Int = 0,
     val capacity: Int = 0,
     val isHotspot: Boolean = false,
     val baselineTileY: Int,
-    val footprintOffset: GridOffset,
     val hitRadiusWorld: Float = 0f,
     val hitOffsetXWorld: Float = 0f,
-    val hitOffsetYWorld: Float = 0f,
-    val outsideSlots: List<GridOffset> = emptyList()
+    val hitOffsetYWorld: Float = 0f
 ) {
-    ROAD(1, 1, PlacementBehavior.STROKE, 1.0f, 1.0f, baselineTileY = 0, footprintOffset = GridOffset(0, 0)),
-    WALL(1, 1, PlacementBehavior.STROKE, 1.0f, 1.0f, baselineTileY = 0, footprintOffset = GridOffset(0, 0)),
-    HOUSE(3, 2, PlacementBehavior.STAMP, 3.3f, 2.5f, capacity = Constants.HOUSE_CAPACITY, baselineTileY = 2, footprintOffset = GridOffset(0, -2)),
-    STORE(2, 2, PlacementBehavior.STAMP, 2.8f, 2.6f, jobSlots = 2, baselineTileY = 2, footprintOffset = GridOffset(0, -1), outsideSlots = listOf(GridOffset(0, 3), GridOffset(2, 3))),
-    WORKSHOP(3, 2, PlacementBehavior.STAMP, 3.2f, 2.7f, jobSlots = 2, baselineTileY = 2, footprintOffset = GridOffset(0, -2), outsideSlots = listOf(GridOffset(0, 3), GridOffset(2, 3))),
-    CASTLE(4, 4, PlacementBehavior.STAMP, 4.5f, 4.8f, jobSlots = 4, baselineTileY = 4, footprintOffset = GridOffset(0, -2)),
-    PLAZA(3, 2, PlacementBehavior.STAMP, 3.0f, 2.0f, baselineTileY = 3, footprintOffset = GridOffset(0, -2)),
-    TAVERN(3, 3, PlacementBehavior.STAMP, 3.6f, 3.2f, jobSlots = 2, isHotspot = true, capacity = 4, baselineTileY = 3, footprintOffset = GridOffset(0, -2), outsideSlots = listOf(GridOffset(0, 4), GridOffset(2, 4), GridOffset(1, 4), GridOffset(3, 4)));
+    ROAD(PlacementBehavior.STROKE, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE, baselineTileY = 0),
+    WALL(PlacementBehavior.STROKE, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE, baselineTileY = 0),
+    HOUSE(PlacementBehavior.STAMP, 52f, 40f, capacity = Constants.HOUSE_CAPACITY, baselineTileY = 2),
+    STORE(PlacementBehavior.STAMP, 44f, 41f, jobSlots = 2, baselineTileY = 2),
+    WORKSHOP(PlacementBehavior.STAMP, 50f, 42f, jobSlots = 2, baselineTileY = 2),
+    CASTLE(PlacementBehavior.STAMP, 72f, 76f, jobSlots = 4, baselineTileY = 4),
+    PLAZA(PlacementBehavior.STAMP, 48f, 32f, baselineTileY = 3),
+    TAVERN(PlacementBehavior.STAMP, 56f, 50f, jobSlots = 2, isHotspot = true, capacity = 4, baselineTileY = 3);
 
     /** The physical width of the structure's footprint in world units. Used for collision and NavGrid baking. */
     val worldWidth: Float
-        get() = footprintWidthTiles * Constants.TILE_SIZE * Constants.WORLD_SCALE
+        get() = (spriteWidthPx / TILE_PIXEL_SIZE) * Constants.TILE_SIZE * Constants.WORLD_SCALE
 
     /** The physical height of the structure's footprint in world units. Used for collision and NavGrid baking. */
     val worldHeight: Float
-        get() = footprintHeightTiles * Constants.TILE_SIZE * Constants.WORLD_SCALE
+        get() = (spriteHeightPx / TILE_PIXEL_SIZE) * Constants.TILE_SIZE * Constants.WORLD_SCALE
 
     val baselineWorld: Float
         get() = baselineTileY * Constants.TILE_SIZE * Constants.WORLD_SCALE
@@ -76,8 +68,10 @@ enum class StructureType(
 
 /**
  * Represents an instance of a structure in the world.
- * Its physical location and bounds are defined by its `type` (StructureType) and its `x`, `y` coordinates.
- * The (x, y) coordinate represents the top-left anchor of the structure's physical footprint.
+ *
+ * ANCHOR CONTRACT: The (x, y) coordinate represents the BOTTOM-LEFT anchor of the
+ * structure's sprite in world space. All physical and visual bounds are calculated
+ * relative to this point.
  */
 @Serializable
 data class Structure(
@@ -89,8 +83,10 @@ data class Structure(
     val workers: List<String> = emptyList(),
     var customName: String? = null
 ) {
-    val gridX: Int get() = (x / Constants.TILE_SIZE).toInt()
-    val gridY: Int get() = (y / Constants.TILE_SIZE).toInt()
+    /** The top-left X coordinate of the structure's footprint in grid/tile space. */
+    val topLeftGridX: Int get() = (x / Constants.TILE_SIZE).toInt()
+    /** The top-left Y coordinate of the structure's footprint in grid/tile space. */
+    val topLeftGridY: Int get() = ((y - type.worldHeight) / Constants.TILE_SIZE).toInt()
 }
 
 @Serializable
@@ -112,9 +108,9 @@ enum class DailyIntent { WANDER, GO_WORK, GO_HOME }
 @Serializable
 enum class GoalIntentType { IDLE, GO_HOME, GO_WORK, BUSY_AT_WORK, VISIT_FRIEND, VISIT_PLAZA, VISIT_TAVERN, VISIT_STORE, WANDER_NEAR_HOME }
 @Serializable
-enum class AgentState { IDLE, TRAVELING, AT_WORK, SLEEPING, SOCIALIZING, WANDER_DWELL, EXCURSION_GOING, EXCURSION_VISITING, EXCURSION_RETURNING }
+enum class AgentState { IDLE, TRAVELING, AT_WORK, SLEEPING, SOCIALIZING, EXCURSION_VISITING }
 @Serializable
-enum class PoiType { HOUSE, STORE, WORKSHOP, CASTLE, TOWN_CENTER, PLAZA, TAVERN }
+enum class PoiType { HOUSE, STORE, WORKSHOP, CASTLE, PLAZA, TAVERN }
 @Serializable
 enum class WorkActionType { WANDER_NEARBY, VISIT_PLAZA, VISIT_OTHER_STORE }
 @Serializable
@@ -199,7 +195,7 @@ class AgentRuntime(
     var goalIntentEndsMs: Long = 0L,
     var goalIntentTargetId: String? = null,
     var goalIntentFailCount: Int = 0,
-    var goalIntentSlotIndex: Int = -1, // FIX: Added explicit type annotation
+    var goalIntentSlotIndex: Int = -1,
     var goalIntentFriendCooldownUntilMs: Long = 0L,
     // Debugging fields
     var debugDesiredStep: Offset? = null,
@@ -277,7 +273,7 @@ data class Agent(
     var goalIntentEndsMs: Long = 0L,
     var goalIntentTargetId: String? = null,
     var goalIntentFailCount: Int = 0,
-    var goalIntentSlotIndex: Int = -1, // FIX: Added explicit type annotation
+    var goalIntentSlotIndex: Int = -1,
     var goalIntentFriendCooldownUntilMs: Long = 0L,
     // Debugging fields
     var serDebugDesiredStep: SerializableOffset? = null,
@@ -305,7 +301,7 @@ fun AgentRuntime.toAgent(): Agent {
         lastBumpTimeMs = lastBumpTimeMs,
         lastPoiId = lastPoiId,
         goalPos = goalPos?.let { SerializableOffset(it.x, it.y) },
-        pathTiles = pathTiles, // FIX: pathTiles is already List<Int>
+        pathTiles = pathTiles,
         pathIndex = pathIndex,
         repathCooldownUntilMs = repathCooldownUntilMs,
         noProgressMs = noProgressMs,
@@ -385,7 +381,7 @@ fun Agent.toRuntime(): AgentRuntime {
         lastBumpTimeMs = lastBumpTimeMs,
         lastPoiId = lastPoiId,
         goalPos = goalPos?.toOffset(),
-        pathTiles = pathTiles, // FIX: pathTiles is already List<Int>
+        pathTiles = pathTiles,
         pathIndex = pathIndex,
         repathCooldownUntilMs = repathCooldownUntilMs,
         noProgressMs = noProgressMs,
@@ -458,6 +454,40 @@ data class WorldState(
     val version: Int = 14
 ) {
     fun copyTiles(): Array<Array<TileType>> = Array(tiles.size) { x -> tiles[x].copyOf() }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is WorldState) return false
+
+        if (!tiles.contentDeepEquals(other.tiles)) return false
+        if (structures != other.structures) return false
+        if (agents != other.agents) return false
+        if (props != other.props) return false
+        if (pois != other.pois) return false
+        if (relationships != other.relationships) return false
+        if (timeOfDay != other.timeOfDay) return false
+        if (nextAgentId != other.nextAgentId) return false
+        if (roadRevision != other.roadRevision) return false
+        if (structureRevision != other.structureRevision) return false
+        if (version != other.version) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = tiles.contentDeepHashCode()
+        result = 31 * result + structures.hashCode()
+        result = 31 * result + agents.hashCode()
+        result = 31 * result + props.hashCode()
+        result = 31 * result + pois.hashCode()
+        result = 31 * result + relationships.hashCode()
+        result = 31 * result + timeOfDay.hashCode()
+        result = 31 * result + nextAgentId
+        result = 31 * result + roadRevision
+        result = 31 * result + structureRevision
+        result = 31 * result + version
+        return result
+    }
 }
 
 @Serializable

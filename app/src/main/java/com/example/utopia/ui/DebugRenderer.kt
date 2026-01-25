@@ -118,9 +118,11 @@ private fun DrawScope.drawHitboxOverlay(
     structures.forEach { structure ->
         val width = structure.type.worldWidth * camera.zoom
         val height = structure.type.worldHeight * camera.zoom
+        // ANCHOR FIX: Subtract worldHeight because structure.y is the bottom anchor.
+        val drawY = (structure.y - structure.type.worldHeight) * camera.zoom + camera.offset.y
         drawRect(
             color = Color.Yellow.copy(alpha = 0.5f),
-            topLeft = Offset(structure.x * camera.zoom + camera.offset.x, structure.y * camera.zoom + camera.offset.y),
+            topLeft = Offset(structure.x * camera.zoom + camera.offset.x, drawY),
             size = Size(width, height),
             style = Stroke(width = 2.dp.toPx())
         )

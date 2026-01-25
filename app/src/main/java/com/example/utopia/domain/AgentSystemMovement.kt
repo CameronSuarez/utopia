@@ -1,12 +1,6 @@
 package com.example.utopia.domain
 
-import android.util.Log
 import com.example.utopia.data.models.AgentRuntime
-import com.example.utopia.data.models.AgentState
-import com.example.utopia.data.models.DayPhase
-import com.example.utopia.data.models.Structure
-import com.example.utopia.data.models.VisitBehavior
-import com.example.utopia.data.models.WorldState
 import com.example.utopia.util.Constants
 
 internal fun AgentSystem.shouldBeMoving(agent: AgentRuntime): Boolean {
