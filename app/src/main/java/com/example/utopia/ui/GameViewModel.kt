@@ -11,10 +11,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.utopia.domain.AgentSystem
 import com.example.utopia.domain.NavGrid
 import com.example.utopia.domain.Pathfinding
 import com.example.utopia.domain.WorldManager
+import com.example.utopia.domain.updateAgents
 import com.example.utopia.util.Constants
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -23,7 +23,7 @@ import kotlinx.coroutines.launch
 class GameViewModel : ViewModel() {
     val navGrid = NavGrid()
     val worldManager = WorldManager(navGrid)
-    val agentSystem = AgentSystem(worldManager, worldManager.random, navGrid)
+
     // Note: placementController now doesn't strictly need to trigger updateNavGrid immediately,
     // as the game loop will catch the dirty rect and update it batch-style.
     val placementController = PlacementController(worldManager, ::updateNavGrid)
@@ -36,11 +36,7 @@ class GameViewModel : ViewModel() {
 
     // Town Stats
     var totalPopulation by mutableIntStateOf(0)
-    var employedCount by mutableIntStateOf(0)
-    var unemployedCount by mutableIntStateOf(0)
     var buildingCount by mutableIntStateOf(0)
-    var townMood by mutableFloatStateOf(0f)
-    private var moodHistory = mutableListOf<Float>()
 
     // Debug
     var showNavGridDebug by mutableStateOf(false)
@@ -48,22 +44,14 @@ class GameViewModel : ViewModel() {
     var showLotDebug by mutableStateOf(false) // Added for lot overlay
     var showAgentPaths by mutableStateOf(false)
     var showAgentLabels by mutableStateOf(false)
-    var showAgentClearanceDebug by mutableStateOf(false)
-    var showAgentVectorsDebug by mutableStateOf(false)
+    // REMOVED: var showAgentClearanceDebug by mutableStateOf(false)
+    // REMOVED: var showAgentVectorsDebug by mutableStateOf(false)
 
     var fps by mutableIntStateOf(0)
     var frameTimeMs by mutableLongStateOf(0L)
-    var pathRequestsPerSec by mutableIntStateOf(0)
-    var roadPathsPerSec by mutableIntStateOf(0)
-    var offRoadFallbacksPerSec by mutableIntStateOf(0)
-    var socialTriggersPerCycle by mutableIntStateOf(0)
-    var bumpsPerCycle by mutableIntStateOf(0)
-    var friendChasesStarted by mutableIntStateOf(0)
-    var friendChasesAborted by mutableIntStateOf(0)
-    var blockedByCooldown by mutableIntStateOf(0)
-    var blockedByPhase by mutableIntStateOf(0)
-    var blockedByState by mutableIntStateOf(0)
-    var currentPhaseName by mutableStateOf("Unknown")
+
+    // Time State (Now locally managed)
+    var currentPhaseName by mutableStateOf("Day/Night") // Hardcode simplified time state
     var timeInCycle by mutableFloatStateOf(0f)
     var roadCount by mutableIntStateOf(0)
 
@@ -89,15 +77,33 @@ class GameViewModel : ViewModel() {
             var lastTime = System.currentTimeMillis()
             var frameCount = 0
             var lastFpsUpdate = System.currentTimeMillis()
+            var timeMs = 0L
+
+            // Local time state to replace WorldState.timeOfDay
+            var localTimeOfDay = 0f
+            val totalCycleSec = 480f // Replaced Constants.PHASE_DURATION_SEC * 4
+            val phaseDurationSec = 120f // Replaced Constants.PHASE_DURATION_SEC 
 
             while (isActive) {
                 val currentTime = System.currentTimeMillis()
                 val deltaTime = currentTime - lastTime
                 lastTime = currentTime
                 frameTimeMs = deltaTime
+                timeMs += deltaTime
 
-                worldManager.updateTime(deltaTime / 1000f)
-                agentSystem.update(deltaTime)
+                val deltaSeconds = deltaTime / 1000f
+
+                // Manual Time Update
+                localTimeOfDay = (localTimeOfDay + deltaSeconds) % totalCycleSec
+
+                // Agent Update (Only Movement/Animation)
+                updateAgents(
+                    agents = worldManager.worldState.value.agents,
+                    worldState = worldManager.worldState.value,
+                    navGrid = navGrid,
+                    deltaTimeMs = deltaTime,
+                    nowMs = currentTime
+                )
 
                 // Batch NavGrid Update
                 val dirtyRect = worldManager.consumeDirtyRect()
@@ -107,8 +113,10 @@ class GameViewModel : ViewModel() {
 
                 // Update Debug Info
                 val worldState = worldManager.worldState.value
-                timeInCycle = worldState.timeOfDay
-                val phaseIdx = (timeInCycle / Constants.PHASE_DURATION_SEC).toInt().coerceIn(0, 3)
+                timeInCycle = localTimeOfDay
+                
+                // Simple Phase Calculation for minimal UI display
+                val phaseIdx = (localTimeOfDay / phaseDurationSec).toInt().coerceIn(0, 3)
                 currentPhaseName = when(phaseIdx) {
                     0 -> "Night"
                     1 -> "Morning"
@@ -124,34 +132,11 @@ class GameViewModel : ViewModel() {
                     frameCount = 0
                     lastFpsUpdate = currentTime
 
-                    pathRequestsPerSec = agentSystem.pathfindCountThisSecond
-                    agentSystem.pathfindCountThisSecond = 0
-                    roadPathsPerSec = agentSystem.roadPathsCountThisSecond
-                    agentSystem.roadPathsCountThisSecond = 0
-                    offRoadFallbacksPerSec = agentSystem.offRoadFallbacksCountThisSecond
-                    agentSystem.offRoadFallbacksCountThisSecond = 0
-                    socialTriggersPerCycle = agentSystem.numSocialTriggers
-                    bumpsPerCycle = agentSystem.numBumps
-                    friendChasesStarted = agentSystem.numFriendChasesStarted
-                    friendChasesAborted = agentSystem.numFriendChasesAborted
-                    blockedByCooldown = agentSystem.numSocialBlockedByCooldown
-                    blockedByPhase = agentSystem.numSocialBlockedByPhase
-                    blockedByState = agentSystem.numSocialBlockedByState
-
                     val agents = worldState.agents
                     totalPopulation = agents.size
-                    employedCount = agents.count { it.jobId != null }
-                    unemployedCount = totalPopulation - employedCount
                     buildingCount = worldState.structures.size
 
-                    val rels = worldState.relationships.values
-                    if (rels.isNotEmpty()) {
-                        val avgRel = rels.map { it.toFloat() }.average().toFloat() / 3f
-                        moodHistory.add(avgRel)
-                        if (moodHistory.size > 120) moodHistory.removeAt(0)
-                        townMood = moodHistory.average().toFloat()
-                        agentSystem.townMood = townMood
-                    }
+                    // REMOVED: Relationship/Mood calculation
 
                     var roads = 0
                     for (x in 0 until Constants.MAP_TILES_W) {

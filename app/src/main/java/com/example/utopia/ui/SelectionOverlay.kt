@@ -40,13 +40,9 @@ fun BuildingInfo(building: Structure, screenPos: Offset) {
     ) {
         Column(modifier = Modifier.padding(8.dp)) {
             Text(building.customName ?: building.type.name, color = Color.White, fontSize = 12.sp)
-            if (building.type.jobSlots > 0) {
-                Row {
-                    repeat(building.type.jobSlots) { i ->
-                        Text(if (i < building.workers.size) "🧑" else "⚪", fontSize = 14.sp)
-                    }
-                }
-            } else if (building.type.capacity > 0) {
+            // REMOVED: Job slot and worker display logic
+
+            if (building.type.capacity > 0) {
                 Row {
                     repeat(building.type.capacity) { i ->
                         Text(if (i < building.residents.size) "🏠" else "⚪", fontSize = 14.sp)

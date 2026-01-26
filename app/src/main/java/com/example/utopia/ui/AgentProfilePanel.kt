@@ -35,18 +35,17 @@ import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.AppearanceSpec
 import com.example.utopia.data.models.AppearanceVariant
 import com.example.utopia.data.models.Gender
-import com.example.utopia.data.models.SocialMemoryEntry
+// Removed: import com.example.utopia.data.models.SocialMemoryEntry
 import kotlin.math.abs
 
 @Composable
 fun AgentProfilePanel(
     agent: AgentRuntime,
-    allAgents: List<AgentRuntime>,
-    relationships: Map<Long, Byte>,
+    // Removed: allAgents: List<AgentRuntime>,
+    // Removed: relationships: Map<Long, Byte>,
     onClose: () -> Unit
 ) {
     val portraitCache = remember { PortraitCache(maxEntries = 128) }
-    val agentNameById = remember(allAgents) { allAgents.associate { it.id to it.name } }
     val scrollState = rememberScrollState()
 
     BoxWithConstraints {
@@ -70,29 +69,8 @@ fun AgentProfilePanel(
                 HeaderRow(onClose = onClose)
                 Spacer(modifier = Modifier.height(12.dp))
                 BasicInfoSection(agent, portraitCache)
-
-                val socialEntries = agent.profile.socialMemory
-                    .mapNotNull { entry ->
-                        val other = allAgents.find { it.id == entry.otherAgentId } ?: return@mapNotNull null
-                        val relKey = getRelKey(agent.shortId, other.shortId)
-                        val score = relationships[relKey]?.toInt() ?: 0
-                        SocialEntryUi(entry, other, score, agentNameById[other.id] ?: other.name)
-                    }
-                    .sortedWith(
-                        compareByDescending<SocialEntryUi> { abs(it.score) }
-                            .thenByDescending { it.entry.lastInteractionTick }
-                    )
-
-                if (socialEntries.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("Social", color = Color.White, style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        socialEntries.forEach { item ->
-                            SocialEntryRow(item, portraitCache)
-                        }
-                    }
-                }
+                
+                // REMOVED: All social memory and relationship display logic.
             }
         }
     }
@@ -115,11 +93,11 @@ private fun HeaderRow(onClose: () -> Unit) {
 @Composable
 private fun BasicInfoSection(agent: AgentRuntime, portraitCache: PortraitCache) {
     val spec = agent.profile.appearance ?: fallbackAppearanceSpec(agent.profile.gender, agent.shortId)
-    val key = PortraitKey(spec, agent.appearance, sizePx = 128)
+    val key = PortraitKey(spec, AppearanceVariant.DEFAULT, sizePx = 128) // FORCED DEFAULT variant
     val portrait = portraitCache.getPortrait(
         key = key,
         gender = agent.profile.gender,
-        personality = agent.personality,
+        // Removed: personality = agent.personality,
         facingLeft = false
     )
 
@@ -132,56 +110,14 @@ private fun BasicInfoSection(agent: AgentRuntime, portraitCache: PortraitCache) 
         Spacer(modifier = Modifier.size(12.dp))
         Column {
             Text(agent.name, color = Color.White, style = MaterialTheme.typography.titleLarge)
-            Text(jobLabel(agent.appearance), color = Color.LightGray, fontSize = 12.sp)
-            Text(agent.personality.name, color = Color.Gray, fontSize = 12.sp)
+            Text("Villager", color = Color.LightGray, fontSize = 12.sp) // Hardcoded "Villager"
+            // Removed: Text(agent.personality.name, color = Color.Gray, fontSize = 12.sp)
         }
     }
 }
 
-@Composable
-private fun SocialEntryRow(item: SocialEntryUi, portraitCache: PortraitCache) {
-    val spec = item.other.profile.appearance ?: fallbackAppearanceSpec(item.other.profile.gender, item.other.shortId)
-    val key = PortraitKey(spec, item.other.appearance, sizePx = 64)
-    val portrait = portraitCache.getPortrait(
-        key = key,
-        gender = item.other.profile.gender,
-        personality = item.other.personality,
-        facingLeft = false
-    )
-
-    Row(
-        modifier = Modifier.heightIn(min = 56.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Image(
-            bitmap = portrait,
-            contentDescription = null,
-            modifier = Modifier.size(48.dp)
-        )
-        Spacer(modifier = Modifier.size(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = item.name,
-                color = Color.White,
-                fontSize = 14.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = "${relationshipTier(item.score)}   ${formatScore(item.score)}",
-                color = Color.LightGray,
-                fontSize = 12.sp
-            )
-        }
-    }
-}
-
-private data class SocialEntryUi(
-    val entry: SocialMemoryEntry,
-    val other: AgentRuntime,
-    val score: Int,
-    val name: String
-)
+// REMOVED: SocialEntryRow
+// REMOVED: SocialEntryUi
 
 private fun fallbackAppearanceSpec(gender: Gender, seed: Int): AppearanceSpec {
     val safeSeed = abs(seed)
@@ -200,29 +136,6 @@ private fun fallbackAppearanceSpec(gender: Gender, seed: Int): AppearanceSpec {
     )
 }
 
-private fun jobLabel(variant: AppearanceVariant): String = when (variant) {
-    AppearanceVariant.DEFAULT -> "Villager"
-    AppearanceVariant.STORE_WORKER -> "Store Worker"
-    AppearanceVariant.WORKSHOP_WORKER -> "Workshop Worker"
-    AppearanceVariant.CASTLE_GUARD -> "Castle Guard"
-    AppearanceVariant.TAVERN_KEEPER -> "Tavern Keeper"
-}
-
-private fun relationshipTier(score: Int): String = when (score) {
-    3 -> "Best Friends"
-    2 -> "Friends"
-    1 -> "Friendly"
-    0 -> "Acquaintances"
-    -1 -> "Cold"
-    -2 -> "Dislike"
-    -3 -> "Hostile"
-    else -> if (score > 0) "Friendly" else "Hostile"
-}
-
-private fun formatScore(score: Int): String = if (score >= 0) "+$score" else "$score"
-
-private fun getRelKey(a: Int, b: Int): Long {
-    val low = minOf(a, b).toLong()
-    val high = maxOf(a, b).toLong()
-    return (low shl 32) or high
-}
+// REMOVED: relationshipTier
+// REMOVED: formatScore
+// REMOVED: getRelKey

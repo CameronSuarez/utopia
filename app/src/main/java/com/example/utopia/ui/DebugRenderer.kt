@@ -11,9 +11,10 @@ import com.example.utopia.data.models.PropInstance
 import com.example.utopia.data.models.Structure
 import com.example.utopia.data.models.TileType
 import com.example.utopia.domain.NavGrid
-import com.example.utopia.domain.VisibleBounds
 import com.example.utopia.util.Constants
 import kotlin.math.floor
+
+// NOTE: VisibleBounds is now a UI model.
 
 /**
  * Single-pass debug renderer.
@@ -45,14 +46,11 @@ fun DrawScope.drawDebugLayers(
         drawPathOverlay(agents, camera)
     }
 
-    if (viewModel.showAgentClearanceDebug || viewModel.showAgentVectorsDebug) {
-        drawAgentClearanceOverlay(
-            agents,
-            camera,
-            viewModel.showAgentClearanceDebug,
-            viewModel.showAgentVectorsDebug
-        )
-    }
+    // REMOVED: Agent Clearance and Vectors Debugging
+    // The logic below was removed due to dependency on deleted fields and flags.
+    // if (viewModel.showAgentClearanceDebug || viewModel.showAgentVectorsDebug) {
+    //     drawAgentClearanceOverlay(...)
+    // }
 }
 
 private fun DrawScope.drawNavGridOverlay(navGrid: NavGrid, camera: Camera2D, bounds: VisibleBounds) {
@@ -60,6 +58,7 @@ private fun DrawScope.drawNavGridOverlay(navGrid: NavGrid, camera: Camera2D, bou
 
     for (x in bounds.startX until bounds.endX) {
         for (y in bounds.startY until bounds.endY) {
+            // Note: NavGrid is now a pure physics artifact, not a behavior artifact (0: Blocked, 1: Walkable, 2: Road)
             val tileValue = navGrid.grid[x][y]
             val color = when (tileValue.toInt()) {
                 0 -> Color.Red.copy(alpha = 0.4f)       // Blocked
@@ -87,6 +86,7 @@ private fun DrawScope.drawNavGridOverlay(navGrid: NavGrid, camera: Camera2D, bou
         }
     }
 
+    // NavGrid validation is a behavioral artifact of the old pathfinding system, but lastValidationError is fine for displaying a static physics state.
     navGrid.lastValidationError?.let {
         drawRect(Color.Red.copy(alpha = 0.1f), topLeft = Offset.Zero, size = size)
     }
@@ -153,6 +153,7 @@ private fun DrawScope.drawPathOverlay(agents: List<AgentRuntime>, camera: Camera
         if (path.size < 2) return@forEach
 
         var prev: Offset? = null
+        // Path rendering is allowed as it is a visual trace of the agent's passive movement logic.
         for (i in agent.pathIndex until path.size) {
             val packed = path[i]
             val gx = packed shr 16
@@ -176,46 +177,5 @@ private fun DrawScope.drawPathOverlay(agents: List<AgentRuntime>, camera: Camera
     }
 }
 
-private fun DrawScope.drawAgentClearanceOverlay(
-    agents: List<AgentRuntime>,
-    camera: Camera2D,
-    showClearance: Boolean,
-    showVectors: Boolean
-) {
-    agents.forEach { agent ->
-        val center = Offset(agent.x * camera.zoom + camera.offset.x, agent.y * camera.zoom + camera.offset.y)
-
-        if (showClearance) {
-            drawCircle(
-                color = Color.Cyan.copy(alpha = 0.6f),
-                center = center,
-                radius = agent.collisionRadius * camera.zoom,
-                style = Stroke(width = 1.dp.toPx())
-            )
-            drawCircle(
-                color = Color.Cyan.copy(alpha = 0.2f),
-                center = center,
-                radius = agent.collisionRadius * 1.5f * camera.zoom,
-                style = Stroke(width = 1.dp.toPx())
-            )
-        }
-
-        if (showVectors) {
-            agent.debugDesiredStep?.let { drawDebugVector(center, it, Color.Green, 20f * camera.zoom) }
-            agent.debugSeparationStep?.let { drawDebugVector(center, it, Color(0xFFFFA500), 20f * camera.zoom) }
-            agent.debugAdjustedStep?.let { drawDebugVector(center, it, Color.White, 20f * camera.zoom) }
-        }
-    }
-}
-
-private fun DrawScope.drawDebugVector(
-    start: Offset,
-    vector: Offset,
-    color: Color,
-    scale: Float
-) {
-    if (vector == Offset.Zero) return
-    val end = start + (vector * scale)
-    drawLine(color = color, start = start, end = end, strokeWidth = 2.dp.toPx())
-    drawCircle(color = color, center = end, radius = 2.dp.toPx())
-}
+// REMOVED: drawAgentClearanceOverlay
+// REMOVED: drawDebugVector

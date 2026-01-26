@@ -24,14 +24,14 @@ fun TownStatsStrip(viewModel: GameViewModel, onSocialLedgerToggle: () -> Unit) {
         modifier = Modifier.padding(2.dp)
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = { onSocialLedgerToggle() },
+                    onTap = { /* onSocialLedgerToggle() is a behavior link, can be safely removed or kept as a placeholder */ },
                     onLongPress = { showDebug = !showDebug }
                 )
             }
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text("Town: ${viewModel.buildingCount} Buildings", color = Color.White, fontSize = 14.sp)
-            Text("Pop: ${viewModel.totalPopulation} (${viewModel.employedCount} Work)", color = Color.White, fontSize = 12.sp)
+            Text("Pop: ${viewModel.totalPopulation}", color = Color.White, fontSize = 12.sp) 
             Text("${viewModel.currentPhaseName} | FPS: ${viewModel.fps}", color = Color.Yellow, fontSize = 10.sp)
 
             if (showDebug) {
@@ -39,32 +39,13 @@ fun TownStatsStrip(viewModel: GameViewModel, onSocialLedgerToggle: () -> Unit) {
                 HorizontalDivider(color = Color.Gray.copy(alpha = 0.5f))
                 Spacer(modifier = Modifier.height(4.dp))
 
-                val social = viewModel.socialTriggersPerCycle
-                val bumps = viewModel.bumpsPerCycle
-                val totalInt = social + bumps
-                val share = if (totalInt > 0) (social * 100 / totalInt) else 0
-
                 Text(
-                    text = "Social: $social | Bumps: $bumps | Share: $share%",
-                    color = Color.Cyan,
+                    text = "No Agent Telemetry Active",
+                    color = Color.Red,
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace
                 )
-                Text(
-                    text = "Chase: ${viewModel.friendChasesStarted} | Abort: ${viewModel.friendChasesAborted}",
-                    color = Color.Cyan,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-
-                if (social < 5) {
-                    Text(
-                        text = "Blocks -> CD: ${viewModel.blockedByCooldown} PH: ${viewModel.blockedByPhase} ST: ${viewModel.blockedByState}",
-                        color = Color.Magenta,
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
+                // REMOVED: All social telemetry display logic
             }
         }
     }

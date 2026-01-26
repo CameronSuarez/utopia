@@ -24,7 +24,7 @@ import androidx.compose.ui.zIndex
 import com.example.utopia.R
 import com.example.utopia.data.models.*
 import com.example.utopia.debug.AgentLabelOverlay
-import com.example.utopia.util.Constants
+// REMOVED: import com.example.utopia.util.Constants
 
 /**
  * The high-level orchestrator for the City screen.
@@ -101,7 +101,7 @@ fun CityScreen(viewModel: GameViewModel) {
     val emojiFxAssets = remember(emojiPaint, affinityPaint) { EmojiFxAssets(emojiPaint, affinityPaint) }
 
     // UI Overlay State
-    var showSocialLedger by remember { mutableStateOf(false) }
+    // REMOVED: var showSocialLedger by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -239,8 +239,7 @@ fun CityScreen(viewModel: GameViewModel) {
             }
         }
 
-        // Environmental Effects Layer (Atmospheric Tints)
-        EnvironmentTints(viewModel)
+        // REMOVED: Environmental Effects Layer (Atmospheric Tints)
 
         // HUD Layer (Stats, Tools, Overlays)
         Column(
@@ -255,7 +254,7 @@ fun CityScreen(viewModel: GameViewModel) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
-                TownStatsStrip(viewModel, onSocialLedgerToggle = { showSocialLedger = !showSocialLedger })
+                TownStatsStrip(viewModel, onSocialLedgerToggle = {}) // Cleaned up lambda
                 DebugPanel(viewModel = viewModel, modifier = Modifier.padding(end = 8.dp))
                 TrashCan(pc)
             }
@@ -275,46 +274,15 @@ fun CityScreen(viewModel: GameViewModel) {
             ) {
                 AgentProfilePanel(
                     agent = selectedAgent,
-                    allAgents = worldState.agents,
-                    relationships = worldState.relationships,
+                    // Removed: allAgents = worldState.agents,
+                    // Removed: relationships = worldState.relationships,
                     onClose = { viewModel.clearSelection() }
                 )
             }
         }
 
-        if (showSocialLedger) {
-            SocialLedgerOverlay(viewModel, onClose = { showSocialLedger = false })
-        }
+        // REMOVED: SocialLedgerOverlay display logic
     }
-}
-
-@Composable
-private fun EnvironmentTints(viewModel: GameViewModel) {
-    val brightness = viewModel.worldManager.getBrightness()
-    val time = viewModel.timeInCycle
-    val phaseIdx = (time / Constants.PHASE_DURATION_SEC).toInt().coerceIn(0, 3)
-
-    val tintColor = when (phaseIdx) {
-        1 -> Color(0xFFFF9800).copy(alpha = 0.1f * (1f - brightness)) // Morning
-        3 -> Color(0xFF673AB7).copy(alpha = 0.15f * (1f - brightness)) // Evening
-        0 -> Color(0xFF0D47A1).copy(alpha = 0.3f) // Night
-        else -> Color.Transparent
-    }
-
-    val darknessAlpha = (1f - brightness).coerceIn(0f, 0.5f)
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .zIndex(0.5f)
-            .background(Color.Black.copy(alpha = darknessAlpha))
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .zIndex(0.6f)
-            .background(tintColor)
-    )
 }
 
 @Composable

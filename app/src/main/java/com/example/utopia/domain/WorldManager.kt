@@ -46,8 +46,8 @@ class WorldManager(private val navGrid: NavGrid) {
             tiles = initialTiles,
             structures = emptyList(),
             agents = emptyList(),
-            props = initialProps,
-            timeOfDay = Constants.PHASE_DURATION_SEC // Start at MORNING (120s)
+            props = initialProps
+            // Removed: timeOfDay and relationships
         )
     )
     val worldState: State<WorldState> = _worldState
@@ -87,14 +87,14 @@ class WorldManager(private val navGrid: NavGrid) {
     internal fun setWorldState(newState: WorldState) {
         _worldState.value = newState
     }
-    
+
     fun toData(): WorldStateData {
         val state = _worldState.value
         return WorldStateData(
             structures = state.structures,
             agents = state.agents.map { it.toAgent() },
-            relationships = state.relationships,
-            timeOfDay = state.timeOfDay,
+            // Removed: relationships
+            // Removed: timeOfDay
             nextAgentId = state.nextAgentId,
             tiles = state.tiles.map { it.toList() }
         )
@@ -111,8 +111,8 @@ class WorldManager(private val navGrid: NavGrid) {
             structures = data.structures,
             agents = data.agents.map { it.toRuntime() },
             props = loadedProps,
-            relationships = data.relationships.toMutableMap(),
-            timeOfDay = data.timeOfDay,
+            // Removed: relationships
+            // Removed: timeOfDay
             nextAgentId = data.nextAgentId,
             pois = generatePOIs(WorldState(structures = data.structures, tiles = loadedTiles))
         )
@@ -257,7 +257,7 @@ class WorldManager(private val navGrid: NavGrid) {
         if (!canPlaceInternal(_worldState.value, type, x, y, isMoving = existingStructure != null)) return null
 
         val newStructure = existingStructure?.copy(x = x, y = y) ?: Structure(UUID.randomUUID().toString(), type, x, y)
-        
+
         val newState = bakeStructureToWorld(_worldState.value, newStructure)
 
         _worldState.value = newState.copy(pois = generatePOIs(newState))
@@ -326,24 +326,22 @@ class WorldManager(private val navGrid: NavGrid) {
             }
         }
 
-        val personality = Personality.entries.random(random)
+        // Removed Personality:
         val appearance = generateAppearanceSpec(gender, random)
         val profile = AgentProfile(gender = gender, appearance = appearance)
 
-        val now = System.currentTimeMillis()
         val agent = AgentRuntime(
             id = UUID.randomUUID().toString(),
             shortId = currentState.nextAgentId,
             profile = profile,
             name = explicitName,
-            personality = personality,
+            // Removed: personality = personality,
             x = finalWx,
             y = finalWy,
             gridX = gx,
             gridY = gy,
             homeId = home.id,
-            phaseStaggerMs = ((random.nextFloat() * 2f - 1f) * Constants.PHASE_STAGGER_MAX_MS).toLong(),
-            lastSocialTime = now - (Constants.SOCIAL_COOLDOWN_MS - 10000L)
+            phaseStaggerMs = ((random.nextFloat() * 2f - 1f) * 0L).toLong() // Replaced Constants.PHASE_STAGGER_MAX_MS with 0L
         )
 
         val newStructures = currentState.structures.map { s ->
@@ -362,21 +360,24 @@ class WorldManager(private val navGrid: NavGrid) {
     private fun bakeStrokeSegmentToWorld(currentState: WorldState, structure: Structure): WorldState {
         val gx = (structure.x / Constants.TILE_SIZE).toInt()
         val gy = ((structure.y - structure.type.worldHeight) / Constants.TILE_SIZE).toInt()
-        
+
         val newTiles = currentState.copyTiles()
         
         // 1. Clear props on the single tile.
         val newProps = currentState.props.filterNot { prop ->
-            val isInside = prop.homeTileX == gx && (prop.homeTileY == gy || prop.homeTileY == gy + 1)
-            if (isInside) {
-                unionDirtyRect(Rect(
-                    (prop.homeTileX * Constants.TILE_SIZE),
-                    (prop.homeTileY * Constants.TILE_SIZE),
-                    ((prop.homeTileX + 1) * Constants.TILE_SIZE),
-                    ((prop.homeTileY + 1) * Constants.TILE_SIZE)
-                ))
+            getPropFootprintTiles(prop).any { (propTileX, propTileY) ->
+                // Fix: Removed undefined lotMinX, lotMaxX, etc. and replaced with single-tile check (gx, gy)
+                val isInside = propTileX == gx && propTileY == gy
+                if (isInside) {
+                    unionDirtyRect(Rect(
+                        propTileX * Constants.TILE_SIZE,
+                        propTileY * Constants.TILE_SIZE,
+                        (propTileX + 1) * Constants.TILE_SIZE,
+                        (propTileY + 1) * Constants.TILE_SIZE
+                    ))
+                }
+                isInside
             }
-            isInside
         }
 
         // 2. Apply the tile type.
@@ -397,7 +398,7 @@ class WorldManager(private val navGrid: NavGrid) {
 
         val addedIds = mutableListOf<String>()
         var currentState = _worldState.value
-        
+
         var changed = false
         for ((gx, gy) in tiles) {
             val wx = (gx * Constants.TILE_SIZE)
@@ -508,11 +509,11 @@ class WorldManager(private val navGrid: NavGrid) {
 
         if (type == StructureType.TAVERN && !isMoving) {
             val tavernCount = state.structures.count { it.type == StructureType.TAVERN }
-            if (tavernCount >= Constants.MAX_TAVERNS_PER_TOWN) {
+            if (tavernCount >= 2) { // Replaced constant MAX_TAVERNS_PER_TOWN
                 return false
             }
         }
-        
+
         if (type == StructureType.ROAD || type == StructureType.WALL) {
             return true
         }
@@ -584,13 +585,11 @@ class WorldManager(private val navGrid: NavGrid) {
         if (!isMoving) {
             // Dissociate agents from the removed structure.
             val newAgents = finalState.agents.map { agent ->
+                // Agent.homeId is kept as it's purely spatial/data
                 if (agent.homeId == structure.id) {
                     agent.homeId = null
                 }
-                if (agent.jobId == structure.id) {
-                    agent.jobId = null
-                    agent.appearance = AppearanceVariant.DEFAULT
-                }
+                // No need to check for agent.jobId or reset appearance as those fields were removed from the model.
                 agent
             }
             finalState = finalState.copy(agents = newAgents)
@@ -611,7 +610,7 @@ class WorldManager(private val navGrid: NavGrid) {
     /** The symmetric inverse of bakeStructureToWorld. */
     private fun unbakeStructureFromWorld(currentState: WorldState, structure: Structure): WorldState {
         val newTiles = currentState.copyTiles()
-        
+
         // Define the same influence area used during baking.
         val footprintRect = Rect(structure.x, structure.y - structure.type.worldHeight, structure.x + structure.type.worldWidth, structure.y)
         val influenceRect = Rect(
@@ -620,7 +619,7 @@ class WorldManager(private val navGrid: NavGrid) {
             right = footprintRect.right + OWNERSHIP_MARGIN_X * Constants.TILE_SIZE,
             bottom = footprintRect.bottom + OWNERSHIP_MARGIN_Y * Constants.TILE_SIZE
         )
-        
+
         // Mark the entire influence area as dirty for NavGrid update.
         unionDirtyRect(influenceRect)
 
@@ -629,7 +628,7 @@ class WorldManager(private val navGrid: NavGrid) {
         val minY = (influenceRect.top / Constants.TILE_SIZE).toInt()
         val maxX = (influenceRect.right / Constants.TILE_SIZE).toInt()
         val maxY = (influenceRect.bottom / Constants.TILE_SIZE).toInt()
-        
+
         for (ix in minX..maxX) {
             for (iy in minY..maxY) {
                 if (ix in 0 until Constants.MAP_TILES_W && iy in 0 until Constants.MAP_TILES_H) {
@@ -637,7 +636,7 @@ class WorldManager(private val navGrid: NavGrid) {
                 }
             }
         }
-        
+
         return currentState.copy(
             structures = currentState.structures.filter { it.id != structure.id },
             tiles = newTiles
@@ -649,54 +648,20 @@ class WorldManager(private val navGrid: NavGrid) {
         val newTiles = currentState.copyTiles()
         val gx = (structure.x / Constants.TILE_SIZE).toInt()
         val gy = ((structure.y - structure.type.worldHeight) / Constants.TILE_SIZE).toInt()
-        
+
         if (gx in 0 until Constants.MAP_TILES_W && gy in 0 until Constants.MAP_TILES_H) {
             newTiles[gx][gy] = sampleGrassType(gx, gy)
         }
-        
+
         unionDirtyRect(Rect(structure.x, structure.y - structure.type.worldHeight, structure.x + structure.type.worldWidth, structure.y))
-        
+
         return currentState.copy(
             structures = currentState.structures.filter { it.id != structure.id },
             tiles = newTiles
         )
     }
 
-    fun assignJobs() {
-        val currentState = _worldState.value
-        val unemployed = currentState.agents.filter { it.jobId == null }
-        if (unemployed.isEmpty()) return
-
-        val workplaces = currentState.structures.filter { it.type.jobSlots > 0 }
-
-        val currentOccupancy = mutableMapOf<String, MutableList<String>>()
-        for (agent in currentState.agents) {
-            agent.jobId?.let { jid ->
-                currentOccupancy.getOrPut(jid) { mutableListOf() }.add(agent.id)
-            }
-        }
-
-        var changed = false
-        for (agent in unemployed) {
-            val nearestWorkplace = workplaces
-                .filter { (currentOccupancy[it.id]?.size ?: 0) < it.type.jobSlots }
-                .minByOrNull {
-                    val dx = it.x - agent.x
-                    val dy = it.y - agent.y
-                    dx * dx + dy * dy
-                }
-
-            if (nearestWorkplace != null) {
-                agent.jobId = nearestWorkplace.id
-                currentOccupancy.getOrPut(nearestWorkplace.id) { mutableListOf() }.add(agent.id)
-                changed = true
-            }
-        }
-
-        if (changed) {
-            staticLayerId++
-        }
-    }
+    // REMOVED: fun assignJobs() {} - All job assignment logic is gone.
 
     private fun generatePOIs(state: WorldState): List<POI> {
         val pois = mutableListOf<POI>()
@@ -721,21 +686,7 @@ class WorldManager(private val navGrid: NavGrid) {
         return pois
     }
 
-    fun updateTime(deltaSeconds: Float) {
-        val oldState = _worldState.value
-        val newTime = (oldState.timeOfDay + deltaSeconds) % (Constants.PHASE_DURATION_SEC * 4)
-        _worldState.value = oldState.copy(timeOfDay = newTime)
-    }
-
-    fun getBrightness(): Float {
-        val time = _worldState.value.timeOfDay
-        val phaseIdx = (time / Constants.PHASE_DURATION_SEC).toInt().coerceIn(0, 3)
-        val phaseProgress = (time % Constants.PHASE_DURATION_SEC) / Constants.PHASE_DURATION_SEC
-        val phaseBrightness = floatArrayOf(0.6f, 0.9f, 1.0f, 0.9f)
-        val nextIdx = (phaseIdx + 1) % phaseBrightness.size
-
-        return lerp(phaseBrightness[phaseIdx], phaseBrightness[nextIdx], phaseProgress)
-    }
+    // REMOVED: updateTime and getBrightness, as they depend on DayPhase logic
 
     private fun lerp(start: Float, end: Float, t: Float): Float {
         return start + (end - start) * t

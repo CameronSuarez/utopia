@@ -7,7 +7,25 @@ import java.util.PriorityQueue
 import kotlin.math.abs
 import kotlin.math.max
 
+/**
+ * DESIGN PRINCIPLE: THE DETERMINISTIC NAVIGATOR
+ *
+ * This system is responsible for calculating optimal routes between points.
+ * It is a stateless "pure function" service that queries the [NavGrid]
+ * to find valid paths.
+ *
+ * Responsibilities:
+ * 1. Multi-modal Routing: Planning combined road and off-road segments.
+ * 2. A* Search: Finding the shortest valid sequence of tiles.
+ * 3. Path Simplification: Reducing zigzag tile paths into clean waypoints.
+ * 4. Spatial Queries: Finding nearest walkable tiles or roads.
+ */
+
 object Pathfinding {
+    fun isLocationBlocked(navGrid: NavGrid, gx: Int, gy: Int): Boolean {
+        return !navGrid.isWalkable(gx, gy)
+    }
+
     private class Node(
         val packed: Int,
         var g: Int = 0,

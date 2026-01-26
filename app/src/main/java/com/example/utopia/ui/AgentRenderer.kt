@@ -13,7 +13,7 @@ import com.example.utopia.data.models.AgentState
 import com.example.utopia.data.models.AppearanceSpec
 import com.example.utopia.data.models.AppearanceVariant
 import com.example.utopia.data.models.Gender
-import com.example.utopia.data.models.Personality
+// REMOVED: import com.example.utopia.data.models.Personality
 import com.example.utopia.data.models.Structure
 import kotlin.math.abs
 import kotlin.math.cos
@@ -60,18 +60,8 @@ fun DrawScope.drawAgentItem(
     val cullPadY = 60f * scale
     if (screenPos.x < -cullPadX || screenPos.x > size.width + cullPadX || screenPos.y < -cullPadY || screenPos.y > size.height + cullPadY) return
 
-    val isMoving = (agent.goalPos != null || agent.pathTiles.isNotEmpty()) && agent.dwellTimerMs <= 0L && agent.state != AgentState.SOCIALIZING && agent.state != AgentState.SLEEPING
+    val isMoving = (agent.goalPos != null || agent.pathTiles.isNotEmpty()) && agent.dwellTimerMs <= 0L && agent.state != AgentState.SLEEPING
     val isSleeping = agent.state == AgentState.SLEEPING
-    val isSocializing = agent.state == AgentState.SOCIALIZING
-
-    val jobStructure = agent.jobId?.let { id -> structures.find { it.id == id } }
-    val isInsideWorkplace = jobStructure?.let { s ->
-        val pad = 6f
-        agent.x in (s.x - pad)..(s.x + s.type.worldWidth + pad) &&
-            agent.y in (s.y - pad)..(s.y + s.type.worldHeight + pad)
-    } ?: false
-
-    val isWorking = agent.state == AgentState.AT_WORK && isInsideWorkplace
 
     val spec = agent.profile.appearance ?: run {
         if (loggedMissingAppearance.add(agent.shortId)) {
@@ -92,29 +82,6 @@ fun DrawScope.drawAgentItem(
             bobY = -3f
             squashX = -1f
         }
-    } else if (isSocializing) {
-        bobY = sin(timeMs / 150f) * 2f
-        swayX = cos(timeMs / 200f) * 1.5f
-    } else if (isWorking && timeMs < agent.workAnimEndTimeMs) {
-        val workTimer = timeMs + agent.phaseStaggerMs
-        when (agent.appearance) {
-            AppearanceVariant.WORKSHOP_WORKER -> {
-                val cycle = (workTimer % 600) / 600f
-                bobY = if (cycle > 0.8f) (1f - cycle) * 20f else -cycle * 2f
-            }
-            AppearanceVariant.STORE_WORKER -> {
-                bobY = sin(workTimer / 300f) * 3f
-            }
-            AppearanceVariant.CASTLE_GUARD -> {
-                swayX = sin(workTimer / 800f) * 4f
-            }
-            AppearanceVariant.TAVERN_KEEPER -> {
-                headBobY = abs(sin(workTimer / 500f)) * 4f
-            }
-            else -> {
-                headBobY = abs(sin(workTimer / 1000f)) * 3f
-            }
-        }
     }
 
     val legOffset = if (agent.animFrame == 1) -3f else if (agent.animFrame == 3) 3f else 0f
@@ -122,9 +89,8 @@ fun DrawScope.drawAgentItem(
     renderAgentLayers(
         screenPos = screenPos,
         spec = spec,
-        jobVariant = agent.appearance,
+        jobVariant = AppearanceVariant.DEFAULT,
         gender = agent.profile.gender,
-        personality = agent.personality,
         facingLeft = agent.facingLeft,
         shortId = agent.shortId,
         renderParams = RenderParams(scale = scale),
@@ -143,9 +109,9 @@ fun DrawScope.drawAgentItem(
 internal fun DrawScope.renderAgentLayers(
     screenPos: Offset,
     spec: AppearanceSpec,
-    jobVariant: AppearanceVariant,
+    jobVariant: AppearanceVariant, // This will always be DEFAULT now, but keep for drawing function signature
     gender: Gender,
-    personality: Personality,
+    // Removed Personality parameter
     facingLeft: Boolean,
     shortId: Int,
     renderParams: RenderParams,
@@ -161,24 +127,16 @@ internal fun DrawScope.renderAgentLayers(
     val baseBodyWidth = (if (gender == Gender.MALE) 12.5f else 11f) + spec.bodyWidthMod
     val baseBodyHeight = (if (gender == Gender.MALE) 16f else 17f) + spec.bodyHeightMod
 
-    val agentColor = when (jobVariant) {
-        AppearanceVariant.DEFAULT -> baseTunicColor
-        AppearanceVariant.STORE_WORKER -> Color(0xFF81D4FA)
-        AppearanceVariant.WORKSHOP_WORKER -> Color(0xFFFFF176)
-        AppearanceVariant.CASTLE_GUARD -> Color(0xFFBDBDBD) // Iron Plate
-        AppearanceVariant.TAVERN_KEEPER -> Color(0xFF8D6E63)
-    }
+    val agentColor = baseTunicColor
 
     withTransform({
         scale(renderParams.scale, renderParams.scale, pivot = screenPos)
     }) {
-        // 1. Legs
         if (anim.showLegs) {
             drawRect(Color.DarkGray, Offset(screenPos.x - 4f + anim.legOffset, screenPos.y + 2f), Size(3f, 4f))
             drawRect(Color.DarkGray, Offset(screenPos.x + 1f - anim.legOffset, screenPos.y + 2f), Size(3f, 4f))
         }
 
-        // 2. Body (Tunic)
         drawRoundRect(
             color = agentColor,
             topLeft = Offset(screenPos.x - baseBodyWidth / 2f - anim.squashX / 2f + anim.swayX, screenPos.y - baseBodyHeight + anim.bobY),
@@ -188,41 +146,6 @@ internal fun DrawScope.renderAgentLayers(
 
         // 3. Layered Clothing (Vest/Apron/Detail)
         when (jobVariant) {
-            AppearanceVariant.WORKSHOP_WORKER -> {
-                // Leather Apron
-                drawRect(
-                    color = Color(0xFF5D4037),
-                    topLeft = Offset(screenPos.x - 4f + anim.swayX, screenPos.y - 12f + anim.bobY),
-                    size = Size(8f, 12f)
-                )
-            }
-            AppearanceVariant.TAVERN_KEEPER -> {
-                // White Apron
-                drawRect(
-                    color = Color.White.copy(alpha = 0.8f),
-                    topLeft = Offset(screenPos.x - 5f + anim.swayX, screenPos.y - 10f + anim.bobY),
-                    size = Size(10f, 10f)
-                )
-            }
-            AppearanceVariant.STORE_WORKER -> {
-                // Trader Sash
-                val sashPath = Path().apply {
-                    moveTo(screenPos.x - 6f + anim.swayX, screenPos.y - 14f + anim.bobY)
-                    lineTo(screenPos.x + 6f + anim.swayX, screenPos.y - 6f + anim.bobY)
-                    lineTo(screenPos.x + 6f + anim.swayX, screenPos.y - 4f + anim.bobY)
-                    lineTo(screenPos.x - 6f + anim.swayX, screenPos.y - 12f + anim.bobY)
-                    close()
-                }
-                drawPath(sashPath, Color(0xFFFFA000))
-            }
-            AppearanceVariant.CASTLE_GUARD -> {
-                // Red Tabard over plate
-                drawRect(
-                    color = Color(0xFFC62828),
-                    topLeft = Offset(screenPos.x - 3f + anim.swayX, screenPos.y - 15f + anim.bobY),
-                    size = Size(6f, 14f)
-                )
-            }
             AppearanceVariant.DEFAULT -> {
                 // Simple Vest for some
                 if (shortId % 3 == 0) {
@@ -233,6 +156,8 @@ internal fun DrawScope.renderAgentLayers(
                     )
                 }
             }
+            // Removed other variants
+            else -> {}
         }
 
         // 4. Belt
@@ -258,17 +183,14 @@ internal fun DrawScope.renderAgentLayers(
         drawCircle(Color.Black, 0.8f, Offset(screenPos.x + anim.swayX + (1.5f * lookDir), headY - 1f))
         drawCircle(Color.Black, 0.8f, Offset(screenPos.x + anim.swayX + (3.5f * lookDir), headY - 1f))
 
-        // Eyebrows based on personality
+        // REMOVED: Eyebrows based on personality
+        /*
         when (personality) {
-            Personality.GRUMPY -> {
-                drawLine(Color.Black, Offset(screenPos.x + anim.swayX + (1f * lookDir), headY - 2.5f), Offset(screenPos.x + anim.swayX + (2.5f * lookDir), headY - 1.8f), strokeWidth = 0.8f)
-                drawLine(Color.Black, Offset(screenPos.x + anim.swayX + (4f * lookDir), headY - 2.5f), Offset(screenPos.x + anim.swayX + (2.5f * lookDir), headY - 1.8f), strokeWidth = 0.8f)
-            }
-            Personality.SHY -> {
-                drawLine(Color.Black, Offset(screenPos.x + anim.swayX + (1f * lookDir), headY - 2.2f), Offset(screenPos.x + anim.swayX + (2.5f * lookDir), headY - 2.2f), strokeWidth = 0.5f)
-            }
+            Personality.GRUMPY -> { ... }
+            Personality.SHY -> { ... }
             else -> {}
         }
+        */
 
         // Mouth (straight)
         drawLine(
@@ -313,10 +235,5 @@ internal fun DrawScope.renderAgentLayers(
             }
         }
 
-        // Helmet for guards
-        if (jobVariant == AppearanceVariant.CASTLE_GUARD) {
-            drawRect(Color.LightGray, Offset(screenPos.x - 6f + anim.swayX, headY - 7f), Size(12f, 4f))
-            drawRect(Color.LightGray, Offset(screenPos.x - 1f + anim.swayX, headY - 10f), Size(2f, 4f))
-        }
     }
 }

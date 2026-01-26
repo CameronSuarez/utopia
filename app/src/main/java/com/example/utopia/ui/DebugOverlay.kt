@@ -1,25 +1,23 @@
 package com.example.utopia.ui
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
+// REMOVED: import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.Structure
 import com.example.utopia.data.models.TileType
 import com.example.utopia.data.models.PropInstance
-import com.example.utopia.debug.PathDebugOverlay
+// REMOVED: import com.example.utopia.debug.PathDebugOverlay
 import com.example.utopia.domain.NavGrid
 import com.example.utopia.util.Constants
 import kotlin.math.floor
@@ -123,62 +121,8 @@ fun LotDebugOverlay(
     }
 }
 
-@Composable
-fun AgentClearanceDebugOverlay(
-    agents: List<AgentRuntime>,
-    cameraOffset: Offset,
-    showClearance: Boolean,
-    showVectors: Boolean,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier.fillMaxSize()) {
-        agents.forEach { agent ->
-            val center = Offset(agent.x + cameraOffset.x, agent.y + cameraOffset.y)
-
-            if (showClearance) {
-                // 1. Collision Radius (Solid Cyan)
-                drawCircle(
-                    color = Color.Cyan.copy(alpha = 0.6f),
-                    center = center,
-                    radius = agent.collisionRadius,
-                    style = Stroke(width = 1.dp.toPx())
-                )
-
-                // 2. Clearance Radius (Translucent Dash-style simulated circle)
-                // We use 1.5x as a visual indicator of the "influence" zone
-                drawCircle(
-                    color = Color.Cyan.copy(alpha = 0.2f),
-                    center = center,
-                    radius = agent.collisionRadius * 1.5f,
-                    style = Stroke(width = 1.dp.toPx())
-                )
-            }
-
-            if (showVectors) {
-                // Desired Step (Green)
-                agent.debugDesiredStep?.let { drawDebugVector(center, it, Color.Green, 20f) }
-                // Separation Step (Orange)
-                agent.debugSeparationStep?.let { drawDebugVector(center, it, Color(0xFFFFA500), 20f) }
-                // Final Adjusted Step (White)
-                agent.debugAdjustedStep?.let { drawDebugVector(center, it, Color.White, 20f) }
-            }
-        }
-    }
-}
-
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDebugVector(
-    start: Offset,
-    vector: Offset,
-    color: Color,
-    scale: Float
-) {
-    if (vector == Offset.Zero) return
-    val end = start + (vector * scale)
-    drawLine(color = color, start = start, end = end, strokeWidth = 2.dp.toPx())
-    
-    // Tiny arrow head
-    drawCircle(color = color, center = end, radius = 2.dp.toPx())
-}
+// REMOVED: AgentClearanceDebugOverlay
+// REMOVED: drawDebugVector
 
 /**
  * [YELLOW] Visualizes the "Physical Footprint" or "Hitbox" of entities.
@@ -283,20 +227,8 @@ fun DebugPanel(
                     expanded = false
                 }
             )
-            DropdownMenuItem(
-                text = { Text(if (viewModel.showAgentClearanceDebug) "Hide Clearance" else "Show Clearance") },
-                onClick = { 
-                    viewModel.showAgentClearanceDebug = !viewModel.showAgentClearanceDebug
-                    expanded = false
-                }
-            )
-            DropdownMenuItem(
-                text = { Text(if (viewModel.showAgentVectorsDebug) "Hide Vectors" else "Show Vectors") },
-                onClick = { 
-                    viewModel.showAgentVectorsDebug = !viewModel.showAgentVectorsDebug
-                    expanded = false
-                }
-            )
+            // REMOVED: AgentClearanceDebug menu item
+            // REMOVED: AgentVectorsDebug menu item
         }
     }
 }

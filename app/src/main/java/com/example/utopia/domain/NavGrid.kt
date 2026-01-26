@@ -14,6 +14,19 @@ import com.example.utopia.util.Constants
 private const val ENABLE_INCREMENTAL_VALIDATION = true // Set to false for production performance
 private const val USE_DISTANCE_FIELD = true // Toggle for clearance optimization
 
+/**
+ * DESIGN PRINCIPLE: THE SPATIAL TRUTH
+ *
+ * This system is the authoritative source for the physical traversability of the world.
+ * It is a DERIVED system—it observes high-level WorldState (tiles, structures) and
+ * reduces it to a high-performance raster for the AI.
+ *
+ * Responsibilities:
+ * 1. Rasterization: Converting complex shapes into byte-grid walkability.
+ * 2. Distance Fields: Pre-calculating clearance for agents of different sizes.
+ * 3. Validation: Ensuring incremental updates match the "truth" of a full rebuild.
+ */
+
 class NavGrid(val width: Int = Constants.MAP_TILES_W, val height: Int = Constants.MAP_TILES_H) {
 
     private data class GridBounds(
@@ -152,12 +165,26 @@ class NavGrid(val width: Int = Constants.MAP_TILES_W, val height: Int = Constant
         }
     }
 
+
+    /**
+     * Authority on inherent tile blocking.
+     * Only blocks tiles that are impassable by their nature (e.g., Walls, Water).
+     * Does NOT account for structures or props.
+     */
+    private fun isInherentlyBlocked(tile: TileType): Boolean {
+        return when (tile) {
+            TileType.WALL -> true
+            TileType.PROP_BLOCKED -> true
+            else -> false
+        }
+    }
+
     private fun rasterizeTiles(targetGrid: Array<ByteArray>, tiles: Array<Array<TileType>>, bounds: GridBounds) {
         for (x in bounds.minGX..bounds.maxGX) {
             for (y in bounds.minGY..bounds.maxGY) {
                 val tile = tiles[x][y]
                 targetGrid[x][y] = when {
-                    TraversalRules.isInherentlyBlocked(tile) -> 0 // Blocked
+                    isInherentlyBlocked(tile) -> 0 // Blocked
                     tile == TileType.ROAD -> 2 // Road
                     else -> 1 // Walkable
                 }

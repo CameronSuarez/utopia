@@ -5,13 +5,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.withTransform
-import com.example.utopia.util.Constants
+// REMOVED: import com.example.utopia.util.Constants
 
 fun DrawScope.drawGround(camera: Camera2D, groundBitmap: ImageBitmap?) {
-    if (Constants.DISABLE_NATURAL_GROUND) {
-        drawRect(Color(0xFF7CB342), Offset.Zero, size)
-        return
-    }
+    // REMOVED: if (Constants.DISABLE_NATURAL_GROUND) { ... }
 
     if (groundBitmap != null) {
         withTransform({

@@ -1,19 +1,48 @@
 package com.example.utopia.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
-import com.example.utopia.data.models.AgentRuntime // ADDED: Required for agentHitBoundsWorld
+import com.example.utopia.data.models.AgentRuntime 
 import com.example.utopia.data.models.Structure
-import com.example.utopia.data.models.StructureType // Add this import
-import com.example.utopia.domain.VisibleBounds
-import com.example.utopia.ui.StructureAssets
+import com.example.utopia.data.models.StructureType
+// REMOVED: import com.example.utopia.domain.VisibleBounds
 import com.example.utopia.util.Constants
 import kotlin.math.floor
 
+
+data class VisibleBounds(
+    val startX: Int,
+    val endX: Int,
+    val startY: Int,
+    val endY: Int
+)
+
+/**
+ * The single authoritative implementation for drawing a road tile.
+ * This is used by RoadCache for baking and by PlacementController for live previews.
+ */
+fun DrawScope.drawRoadTileInternal(pos: Offset, tileSize: Float, seed: Long) {
+    val roadColor = Color(0xFFBCAAA4)
+    val detailColor = Color(0xFF8D6E63).copy(alpha = 0.3f)
+
+    drawRect(roadColor, pos, Size(tileSize, tileSize))
+
+    val rng = java.util.Random(seed)
+    repeat(6) {
+        val rx = pos.x + rng.nextFloat() * (tileSize * 0.7f) + (tileSize * 0.15f)
+        val ry = pos.y + rng.nextFloat() * (tileSize * 0.7f) + (tileSize * 0.15f)
+        val rw = 2f + rng.nextFloat() * 6f
+        val rh = 1f + rng.nextFloat() * 4f
+        drawRoundRect(detailColor, Offset(rx, ry), Size(rw, rh), CornerRadius(1f, 1f))
+    }
+}
 
 data class Camera2D(
     val offset: Offset,
@@ -154,7 +183,7 @@ fun structureHitBoundsWorld(structure: Structure): Rect {
 
 /**
  * Logical Bounds (Owned Area) - Expanded by 2 tiles in all directions.
- * Used for house territory, job assignment, etc.
+ * Used for house territory, etc. (Removed job/assignment references)
  */
 fun structureLogicalBoundsWorld(structure: Structure): Rect {
     val type = structure.type

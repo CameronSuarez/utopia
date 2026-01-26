@@ -1,6 +1,5 @@
 package com.example.utopia.ui.theme
 
-import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -10,6 +9,17 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color // Needed for the commented out colors
+
+// --- Explicit Imports to resolve cross-file dependencies ---
+import com.example.utopia.ui.theme.Purple80
+import com.example.utopia.ui.theme.PurpleGrey80
+import com.example.utopia.ui.theme.Pink80
+import com.example.utopia.ui.theme.Purple40
+import com.example.utopia.ui.theme.PurpleGrey40
+import com.example.utopia.ui.theme.Pink40
+import com.example.utopia.ui.theme.AppTypography // IMPORTED RENAMED SYMBOL
+// -----------------------------------------------------------
 
 private val DarkColorScheme = darkColorScheme(
     primary = Purple80,
@@ -52,7 +62,7 @@ fun UtopiaTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = AppTypography, // USED RENAMED SYMBOL
         content = content
     )
 }
