@@ -12,7 +12,7 @@ import com.example.utopia.util.Constants
 import kotlin.math.roundToInt
 
 // --- Fast Tuning Prop Size Constants (Will be moved to PropType/Constants later) ---
-private const val TREE_WIDTH_TILES = 11.7f // Desired width in tiles (5.85f * 2)
+private const val TREE_WIDTH_TILES = 5.85f // Desired width in tiles (was 11.7f)
 // ---------------------------------------------------------------------------------
 
 data class PropAssets(

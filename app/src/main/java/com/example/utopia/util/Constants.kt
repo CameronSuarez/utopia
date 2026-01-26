@@ -20,10 +20,10 @@ object Constants {
 
     // Global Building Sprite Scale
 
-    const val HOUSE_SPRITE_MULT = 1f 
-    const val STORE_SPRITE_MULT = 1f 
-    const val WORKSHOP_SPRITE_MULT = 1f 
-    const val TAVERN_SPRITE_MULT = 1f 
+    const val HOUSE_SPRITE_MULT = 1f
+    const val STORE_SPRITE_MULT = 1f
+    const val WORKSHOP_SPRITE_MULT = 1f
+    const val TAVERN_SPRITE_MULT = 1f
 
     // Performance Toggles
     const val DISABLE_NATURAL_GROUND = false // Set to false to use caching
@@ -71,9 +71,17 @@ object Constants {
     const val OFF_ROAD_PATH_LIMIT = 20
     const val OFF_ROAD_HIGH_COST = 50
     const val OFF_ROAD_SPEED_MULT = 0.6f
+    const val ON_ROAD_SPEED_MULT = 0.7f
 
     // Agent Movement
     const val AGENT_BASE_SPEED_FACTOR = 0.075f
+    const val AGENT_MOVEMENT_SCALAR = 2.0f
+
+    // Agent Animation
+    const val BASE_ANIMATION_WALK_SPEED = 0.09f
+    const val MIN_ANIMATION_SPEED_MULT = 0.9f
+    const val MAX_ANIMATION_SPEED_MULT = 1.15f
+
 
     const val SOCIAL_DISTANCE = 1.2f
     const val SOCIAL_DURATION_MS = 5000L

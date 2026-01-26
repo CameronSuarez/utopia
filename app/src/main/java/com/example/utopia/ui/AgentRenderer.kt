@@ -20,6 +20,9 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
+// NOTE: Visual scale only. Logical agent size is unchanged by design.
+private const val AGENT_VISUAL_SCALE = 1.76f
+
 internal data class RenderParams(
     val scale: Float
 )
@@ -52,8 +55,7 @@ fun DrawScope.drawAgentItem(
     timeMs: Long
 ) {
     val screenPos = worldToScreen(Offset(agent.x, agent.y), camera)
-    // Increased agent sprite size from 2.2f to 2.35f (approx 6.8% increase per user request)
-    val scale = 2.35f * camera.zoom
+    val scale = AGENT_VISUAL_SCALE * camera.zoom
     val cullPadX = 40f * scale
     val cullPadY = 60f * scale
     if (screenPos.x < -cullPadX || screenPos.x > size.width + cullPadX || screenPos.y < -cullPadY || screenPos.y > size.height + cullPadY) return

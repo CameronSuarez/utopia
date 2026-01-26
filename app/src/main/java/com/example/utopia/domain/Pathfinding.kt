@@ -114,9 +114,9 @@ object Pathfinding {
     fun pickWalkableTileForStructure(s: Structure, referencePos: Offset, navGrid: NavGrid): Offset {
         val pad = 1
         val minGX = (s.x / Constants.TILE_SIZE).toInt() - pad
-        val minGY = (s.y / Constants.TILE_SIZE).toInt() - pad
+        val minGY = ((s.y - s.type.worldHeight) / Constants.TILE_SIZE).toInt() - pad
         val maxGX = ((s.x + s.type.worldWidth - 1f) / Constants.TILE_SIZE).toInt() + pad
-        val maxGY = ((s.y + s.type.worldHeight - 1f) / Constants.TILE_SIZE).toInt() + pad
+        val maxGY = (s.y / Constants.TILE_SIZE).toInt() + pad
 
         var nearestTile: Pair<Int, Int>? = null
         var minDistSq = Float.MAX_VALUE
@@ -141,7 +141,7 @@ object Pathfinding {
             Offset((nearestTile.first + 0.5f) * Constants.TILE_SIZE, (nearestTile.second + 0.5f) * Constants.TILE_SIZE)
         } else {
             val centerX = (s.x + s.type.worldWidth / 2f)
-            val centerY = (s.y + s.type.worldHeight / 2f)
+            val centerY = (s.y - s.type.worldHeight / 2f)
             val cgx = (centerX / Constants.TILE_SIZE).toInt().coerceIn(0, Constants.MAP_TILES_W - 1)
             val cgy = (centerY / Constants.TILE_SIZE).toInt().coerceIn(0, Constants.MAP_TILES_H - 1)
             val nudged = nudgeOutOfObstacle(cgx, cgy, navGrid)

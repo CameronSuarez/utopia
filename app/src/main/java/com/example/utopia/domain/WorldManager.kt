@@ -267,10 +267,6 @@ class WorldManager(private val navGrid: NavGrid) {
             spawnVillagersForHouse(newStructure)
         }
 
-        if (type.jobSlots > 0) {
-            assignJobs()
-        }
-
         validateInvariants()
         return newStructure.id
     }
@@ -360,13 +356,12 @@ class WorldManager(private val navGrid: NavGrid) {
             nextAgentId = currentState.nextAgentId + 1
         )
         staticLayerId++
-        assignJobs()
     }
 
     /** Parallel authority for stroke-based structures (Roads, Walls). */
     private fun bakeStrokeSegmentToWorld(currentState: WorldState, structure: Structure): WorldState {
-        val gx = structure.topLeftGridX
-        val gy = structure.topLeftGridY
+        val gx = (structure.x / Constants.TILE_SIZE).toInt()
+        val gy = ((structure.y - structure.type.worldHeight) / Constants.TILE_SIZE).toInt()
         
         val newTiles = currentState.copyTiles()
         
@@ -446,8 +441,8 @@ class WorldManager(private val navGrid: NavGrid) {
             StructureType.WALL -> TileType.WALL
             else -> TileType.BUILDING_SOLID
         }
-        val minX = s.topLeftGridX
-        val minY = s.topLeftGridY
+        val minX = (s.x / Constants.TILE_SIZE).toInt()
+        val minY = ((s.y - s.type.worldHeight) / Constants.TILE_SIZE).toInt()
         val maxX = ((s.x + s.type.worldWidth - 1f) / Constants.TILE_SIZE).toInt()
         val maxY = ((s.y - 1f) / Constants.TILE_SIZE).toInt()
 
@@ -474,8 +469,10 @@ class WorldManager(private val navGrid: NavGrid) {
     }
 
     private fun markFootprint(tiles: Array<Array<TileType>>, s: Structure, tileType: TileType) {
-        val minX = s.topLeftGridX
-        val minY = s.topLeftGridY
+        // Derive tile coordinates directly from the structure's bottom-left anchor and world dimensions,
+        // ensuring a single source of truth for projection.
+        val minX = (s.x / Constants.TILE_SIZE).toInt()
+        val minY = ((s.y - s.type.worldHeight) / Constants.TILE_SIZE).toInt()
         val maxX = ((s.x + s.type.worldWidth - 1f) / Constants.TILE_SIZE).toInt()
         val maxY = ((s.y - 1f) / Constants.TILE_SIZE).toInt()
 
@@ -530,14 +527,14 @@ class WorldManager(private val navGrid: NavGrid) {
 
         val minGX = (footprintRect.left / Constants.TILE_SIZE).toInt()
         val minGY = (footprintRect.top / Constants.TILE_SIZE).toInt()
-        val maxGX = (footprintRect.right / Constants.TILE_SIZE).toInt()
-        val maxGY = (footprintRect.bottom / Constants.TILE_SIZE).toInt()
+        val maxGX = ((footprintRect.right - 1f) / Constants.TILE_SIZE).toInt()
+        val maxGY = ((footprintRect.bottom - 1f) / Constants.TILE_SIZE).toInt()
 
         for (gx in minGX..maxGX) {
             for (gy in minGY..maxGY) {
                 if (gx in 0 until Constants.MAP_TILES_W && gy in 0 until Constants.MAP_TILES_H) {
                     val t = state.tiles[gx][gy]
-                    if (t != TileType.GRASS_LIGHT && t != TileType.GRASS_DARK && t != TileType.GRASS_DARK_TUFT && t != TileType.BUILDING_LOT) return false
+                    if (t != TileType.GRASS_LIGHT && t != TileType.GRASS_DARK && t != TileType.GRASS_DARK_TUFT && t != TileType.BUILDING_LOT && t != TileType.ROAD) return false
                 }
             }
         }
@@ -650,8 +647,8 @@ class WorldManager(private val navGrid: NavGrid) {
     /** The symmetric inverse of bakeStrokeSegmentToWorld. */
     private fun unbakeStrokeSegmentFromWorld(currentState: WorldState, structure: Structure): WorldState {
         val newTiles = currentState.copyTiles()
-        val gx = structure.topLeftGridX
-        val gy = structure.topLeftGridY
+        val gx = (structure.x / Constants.TILE_SIZE).toInt()
+        val gy = ((structure.y - structure.type.worldHeight) / Constants.TILE_SIZE).toInt()
         
         if (gx in 0 until Constants.MAP_TILES_W && gy in 0 until Constants.MAP_TILES_H) {
             newTiles[gx][gy] = sampleGrassType(gx, gy)
@@ -750,8 +747,8 @@ class WorldManager(private val navGrid: NavGrid) {
             val expectedTile = if (s.type == StructureType.PLAZA) TileType.PLAZA else TileType.BUILDING_SOLID
 
             if (s.type != StructureType.ROAD && s.type != StructureType.WALL) {
-                val gx = s.topLeftGridX
-                val gy = s.topLeftGridY
+                val gx = (s.x / Constants.TILE_SIZE).toInt()
+                val gy = ((s.y - s.type.worldHeight) / Constants.TILE_SIZE).toInt()
                 if (gx >= 0 && gx < Constants.MAP_TILES_W && gy >= 0 && gy < Constants.MAP_TILES_H) {
                     if (state.tiles[gx][gy] != expectedTile && state.tiles[gx][gy] != TileType.BUILDING_FOOTPRINT) {
                         Log.e("WorldManager", "Invariant broken: Structure ${s.id} at $gx,$gy not on footprint (expected $expectedTile, got ${state.tiles[gx][gy]})")

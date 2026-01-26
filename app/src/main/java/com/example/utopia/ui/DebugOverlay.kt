@@ -3,9 +3,11 @@ package com.example.utopia.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -231,27 +233,70 @@ fun DebugPanel(
     viewModel: GameViewModel,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.background(Color.Black.copy(alpha = 0.5f)).padding(4.dp)) {
-        Button(onClick = { viewModel.showNavGridDebug = !viewModel.showNavGridDebug }) {
-            Text(if (viewModel.showNavGridDebug) "Hide NavGrid" else "Show NavGrid")
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier) {
+        IconButton(onClick = { expanded = true }) {
+            Icon(
+                imageVector = Icons.Default.BugReport,
+                contentDescription = "Debug Menu",
+                tint = Color.White
+            )
         }
-        Button(onClick = { viewModel.showHitboxesDebug = !viewModel.showHitboxesDebug }) {
-            Text(if (viewModel.showHitboxesDebug) "Hide Hitboxes" else "Show Hitboxes")
-        }
-        Button(onClick = { viewModel.showLotDebug = !viewModel.showLotDebug }) {
-            Text(if (viewModel.showLotDebug) "Hide Lot" else "Show Lot")
-        }
-        Button(onClick = { viewModel.showAgentPaths = !viewModel.showAgentPaths }) {
-            Text(if (viewModel.showAgentPaths) "Hide Paths" else "Show Paths")
-        }
-        Button(onClick = { viewModel.showAgentLabels = !viewModel.showAgentLabels }) {
-            Text(if (viewModel.showAgentLabels) "Hide Labels" else "Show Labels")
-        }
-        Button(onClick = { viewModel.showAgentClearanceDebug = !viewModel.showAgentClearanceDebug }) {
-            Text(if (viewModel.showAgentClearanceDebug) "Hide Clearance" else "Show Clearance")
-        }
-        Button(onClick = { viewModel.showAgentVectorsDebug = !viewModel.showAgentVectorsDebug }) {
-            Text(if (viewModel.showAgentVectorsDebug) "Hide Vectors" else "Show Vectors")
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text(if (viewModel.showNavGridDebug) "Hide NavGrid" else "Show NavGrid") },
+                onClick = { 
+                    viewModel.showNavGridDebug = !viewModel.showNavGridDebug
+                    expanded = false
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(if (viewModel.showHitboxesDebug) "Hide Hitboxes" else "Show Hitboxes") },
+                onClick = { 
+                    viewModel.showHitboxesDebug = !viewModel.showHitboxesDebug
+                    expanded = false
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(if (viewModel.showLotDebug) "Hide Lot" else "Show Lot") },
+                onClick = { 
+                    viewModel.showLotDebug = !viewModel.showLotDebug
+                    expanded = false
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(if (viewModel.showAgentPaths) "Hide Paths" else "Show Paths") },
+                onClick = { 
+                    viewModel.showAgentPaths = !viewModel.showAgentPaths
+                    expanded = false
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(if (viewModel.showAgentLabels) "Hide Labels" else "Show Labels") },
+                onClick = { 
+                    viewModel.showAgentLabels = !viewModel.showAgentLabels
+                    expanded = false
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(if (viewModel.showAgentClearanceDebug) "Hide Clearance" else "Show Clearance") },
+                onClick = { 
+                    viewModel.showAgentClearanceDebug = !viewModel.showAgentClearanceDebug
+                    expanded = false
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(if (viewModel.showAgentVectorsDebug) "Hide Vectors" else "Show Vectors") },
+                onClick = { 
+                    viewModel.showAgentVectorsDebug = !viewModel.showAgentVectorsDebug
+                    expanded = false
+                }
+            )
         }
     }
 }

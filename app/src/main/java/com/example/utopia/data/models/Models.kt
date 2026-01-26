@@ -37,6 +37,7 @@ enum class StructureType(
     // TODO: A developer must replace these placeholder values with the TRUE pixel dimensions from the sprite assets.
     val spriteWidthPx: Float,
     val spriteHeightPx: Float,
+    val blocksNavigation: Boolean,
     val jobSlots: Int = 0,
     val capacity: Int = 0,
     val isHotspot: Boolean = false,
@@ -45,14 +46,14 @@ enum class StructureType(
     val hitOffsetXWorld: Float = 0f,
     val hitOffsetYWorld: Float = 0f
 ) {
-    ROAD(PlacementBehavior.STROKE, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE, baselineTileY = 0),
-    WALL(PlacementBehavior.STROKE, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE, baselineTileY = 0),
-    HOUSE(PlacementBehavior.STAMP, 52f, 40f, capacity = Constants.HOUSE_CAPACITY, baselineTileY = 2),
-    STORE(PlacementBehavior.STAMP, 44f, 41f, jobSlots = 2, baselineTileY = 2),
-    WORKSHOP(PlacementBehavior.STAMP, 50f, 42f, jobSlots = 2, baselineTileY = 2),
-    CASTLE(PlacementBehavior.STAMP, 72f, 76f, jobSlots = 4, baselineTileY = 4),
-    PLAZA(PlacementBehavior.STAMP, 48f, 32f, baselineTileY = 3),
-    TAVERN(PlacementBehavior.STAMP, 56f, 50f, jobSlots = 2, isHotspot = true, capacity = 4, baselineTileY = 3);
+    ROAD(PlacementBehavior.STROKE, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE, blocksNavigation = false, baselineTileY = 0),
+    WALL(PlacementBehavior.STROKE, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE, blocksNavigation = true, baselineTileY = 0),
+    HOUSE(PlacementBehavior.STAMP, 52f, 40f, blocksNavigation = true, capacity = Constants.HOUSE_CAPACITY, baselineTileY = 2),
+    STORE(PlacementBehavior.STAMP, 44f, 41f, blocksNavigation = true, jobSlots = 2, baselineTileY = 2),
+    WORKSHOP(PlacementBehavior.STAMP, 50f, 42f, blocksNavigation = true, jobSlots = 2, baselineTileY = 2),
+    CASTLE(PlacementBehavior.STAMP, 72f, 76f, blocksNavigation = true, jobSlots = 4, baselineTileY = 4),
+    PLAZA(PlacementBehavior.STAMP, 48f, 32f, blocksNavigation = true, baselineTileY = 3),
+    TAVERN(PlacementBehavior.STAMP, 56f, 50f, blocksNavigation = true, jobSlots = 2, isHotspot = true, capacity = 4, baselineTileY = 3);
 
     /** The physical width of the structure's footprint in world units. Used for collision and NavGrid baking. */
     val worldWidth: Float
@@ -82,12 +83,7 @@ data class Structure(
     val residents: List<String> = emptyList(),
     val workers: List<String> = emptyList(),
     var customName: String? = null
-) {
-    /** The top-left X coordinate of the structure's footprint in grid/tile space. */
-    val topLeftGridX: Int get() = (x / Constants.TILE_SIZE).toInt()
-    /** The top-left Y coordinate of the structure's footprint in grid/tile space. */
-    val topLeftGridY: Int get() = ((y - type.worldHeight) / Constants.TILE_SIZE).toInt()
-}
+)
 
 @Serializable
 enum class DayPhase { NIGHT, MORNING, AFTERNOON, EVENING }
@@ -113,6 +109,8 @@ enum class AgentState { IDLE, TRAVELING, AT_WORK, SLEEPING, SOCIALIZING, EXCURSI
 enum class PoiType { HOUSE, STORE, WORKSHOP, CASTLE, PLAZA, TAVERN }
 @Serializable
 enum class WorkActionType { WANDER_NEARBY, VISIT_PLAZA, VISIT_OTHER_STORE }
+@Serializable
+enum class PrimaryGoal { WORK_SHIFT, OFF_DUTY }
 @Serializable
 data class POI(val id: String, val type: PoiType, val pos: SerializableOffset)
 @Serializable
@@ -190,6 +188,10 @@ class AgentRuntime(
     var resumePos: Offset? = null,
     var avoidanceSide: Float = 0f, // New: 0f (uncommitted), 1f or -1f
     var avoidanceCommitUntilMs: Long = 0, // New: Time until side is mutable again
+    // --- New Goal Architecture ---
+    var primaryGoal: PrimaryGoal = PrimaryGoal.OFF_DUTY,
+    var primaryGoalEndsMs: Long = 0L,
+    var returnIntent: GoalIntentType? = null,
     // Unified Intent State (Goals only)
     var goalIntentType: GoalIntentType = GoalIntentType.IDLE,
     var goalIntentEndsMs: Long = 0L,
@@ -268,6 +270,10 @@ data class Agent(
     var serResumePos: SerializableOffset? = null,
     var avoidanceSide: Float = 0f, // New: 0f (uncommitted), 1f or -1f
     var avoidanceCommitUntilMs: Long = 0, // New: Time until side is mutable again
+    // --- New Goal Architecture ---
+    var primaryGoal: PrimaryGoal = PrimaryGoal.OFF_DUTY,
+    var primaryGoalEndsMs: Long = 0L,
+    var returnIntent: GoalIntentType? = null,
     // Unified Intent State (Goals only)
     var goalIntentType: GoalIntentType = GoalIntentType.IDLE,
     var goalIntentEndsMs: Long = 0L,
@@ -346,6 +352,10 @@ fun AgentRuntime.toAgent(): Agent {
         serResumePos = resumePos?.let { SerializableOffset(it.x, it.y) },
         avoidanceSide = avoidanceSide,
         avoidanceCommitUntilMs = avoidanceCommitUntilMs,
+        // --- New Goal Architecture ---
+        primaryGoal = primaryGoal,
+        primaryGoalEndsMs = primaryGoalEndsMs,
+        returnIntent = returnIntent,
         // Unified Intent State (Goals only)
         goalIntentType = goalIntentType,
         goalIntentEndsMs = goalIntentEndsMs,
@@ -426,6 +436,10 @@ fun Agent.toRuntime(): AgentRuntime {
         resumePos = serResumePos?.toOffset(),
         avoidanceSide = avoidanceSide,
         avoidanceCommitUntilMs = avoidanceCommitUntilMs,
+        // --- New Goal Architecture ---
+        primaryGoal = primaryGoal,
+        primaryGoalEndsMs = primaryGoalEndsMs,
+        returnIntent = returnIntent,
         // Unified Intent State (Goals only)
         goalIntentType = goalIntentType,
         goalIntentEndsMs = goalIntentEndsMs,

@@ -141,7 +141,9 @@ class NavGrid(val width: Int = Constants.MAP_TILES_W, val height: Int = Constant
 
         // 2. Layer 2: Structure Blockage (Authority: Shared Footprint Logic)
         for (structure in structures) {
-            rasterizeFootprint(targetGrid, getStructureFootprint(structure), regionBounds)
+            if (structure.type.blocksNavigation) {
+                rasterizeFootprint(targetGrid, getStructureFootprint(structure), regionBounds)
+            }
         }
 
         // 3. Layer 3: Prop Blockage

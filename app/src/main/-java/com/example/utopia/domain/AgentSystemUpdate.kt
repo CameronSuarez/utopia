@@ -55,7 +55,7 @@ private fun AgentSystem.handlePhaseChange(phase: DayPhase, state: WorldState, no
 private fun AgentSystem.advanceAiTick(deltaTimeMs: Long): Boolean {
     aiTickTimer += deltaTimeMs
     val runAiTick = aiTickTimer >= Constants.AI_TICK_MS
-    if (runAiTick) aiTickTimer = 0L
+    if (runAiTick) aiTimer = 0L
     pathfindCountThisFrame = 0
     return runAiTick
 }
