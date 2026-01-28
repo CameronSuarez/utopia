@@ -122,7 +122,7 @@ fun DrawScope.drawCity(
                     depthX = agent.x,
                     tieBreak = agent.shortId
                 ) {
-                    drawAgentEmojiFxItem(agent, camera, emojiFxAssets, timeMs)
+                    drawAgentEmojiFxItem(agent, worldState, camera, emojiFxAssets, timeMs)
                 })
             }
         }

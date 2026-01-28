@@ -2,11 +2,9 @@ package com.example.utopia.ui
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.nativeCanvas
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.WorldState
-import java.util.Random
-
-// Removed unused imports: CornerRadius, Size, Color, Path, Stroke, nativeCanvas, AgentState, AppearanceVariant, abs, sin
 
 data class EmojiFxAssets(
     val emojiPaint: android.graphics.Paint,
@@ -19,11 +17,12 @@ fun DrawScope.drawEmojiFx(
     assets: EmojiFxAssets,
     timeMs: Long
 ) {
-    worldState.agents.forEach { drawAgentEmojiFxItem(it, camera, assets, timeMs) }
+    worldState.agents.forEach { drawAgentEmojiFxItem(it, worldState, camera, assets, timeMs) }
 }
 
 fun DrawScope.drawAgentEmojiFxItem(
     agent: AgentRuntime,
+    worldState: WorldState,
     camera: Camera2D,
     assets: EmojiFxAssets,
     timeMs: Long
@@ -34,17 +33,24 @@ fun DrawScope.drawAgentEmojiFxItem(
     val cullPadY = 60f * scale
     if (screenPos.x < -cullPadX || screenPos.x > size.width + cullPadX || screenPos.y < -cullPadY || screenPos.y > size.height + cullPadY) return
 
-    val rng = Random(agent.shortId.toLong())
-    val bodyHeightMod = -2f + rng.nextFloat() * 4f
-    val baseBodyHeight = 16f + bodyHeightMod
-
-    var bobY = 0f
-
-    // REMOVED: All behavior-driven animation logic (isMoving, isSleeping, isSocializing, isWorking, etc.)
-
-    // The agent is now a brain-dead husk. We draw no status effects.
-    
-    // REMOVED: All social bubble drawing logic
-
-    // REMOVED: All affinity delta drawing logic
+    // Draw Active Emoji Signals
+    worldState.emojiSignals.forEach { signal ->
+        if (signal.senderId == agent.id) {
+            val signalPos = worldToScreen(signal.position.toOffset(), camera)
+            
+            // Floating animation: moves up slightly over time
+            val elapsed = timeMs - signal.timestamp
+            val floatUp = (elapsed / 1000f) * 20f * camera.zoom
+            
+            assets.emojiPaint.textSize = 24f * camera.zoom
+            assets.emojiPaint.textAlign = android.graphics.Paint.Align.CENTER
+            
+            drawContext.canvas.nativeCanvas.drawText(
+                signal.emojiType,
+                signalPos.x,
+                signalPos.y - floatUp,
+                assets.emojiPaint
+            )
+        }
+    }
 }
