@@ -22,10 +22,6 @@ import kotlin.math.max
  */
 
 object Pathfinding {
-    fun isLocationBlocked(navGrid: NavGrid, gx: Int, gy: Int): Boolean {
-        return !navGrid.isWalkable(gx, gy)
-    }
-
     private class Node(
         val packed: Int,
         var g: Int = 0,

@@ -14,7 +14,6 @@ import androidx.lifecycle.viewModelScope
 import com.example.utopia.domain.NavGrid
 import com.example.utopia.domain.Pathfinding
 import com.example.utopia.domain.WorldManager
-import com.example.utopia.domain.updateAgents
 import com.example.utopia.util.Constants
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -26,7 +25,7 @@ class GameViewModel : ViewModel() {
 
     // Note: placementController now doesn't strictly need to trigger updateNavGrid immediately,
     // as the game loop will catch the dirty rect and update it batch-style.
-    val placementController = PlacementController(worldManager, ::updateNavGrid)
+    val placementController = PlacementController(worldManager, ::onWorldMutation)
 
     var cameraOffset by mutableStateOf(Offset(0f, 0f))
 
@@ -69,6 +68,13 @@ class GameViewModel : ViewModel() {
         Log.d("NavGrid", "NavGrid updated (dirty: ${dirtyRect != null}) and path cache cleared.")
     }
 
+    private fun onWorldMutation() {
+        val dirtyRect = worldManager.consumeDirtyRect()
+        if (dirtyRect != null) {
+            updateNavGrid(dirtyRect)
+        }
+    }
+
     private fun startGameLoop() {
         Log.d("StartupHeartbeat", "GameViewModel.startGameLoop - Launching")
         viewModelScope.launch {
@@ -96,14 +102,7 @@ class GameViewModel : ViewModel() {
                 // Manual Time Update
                 localTimeOfDay = (localTimeOfDay + deltaSeconds) % totalCycleSec
 
-                // Agent Update (Only Movement/Animation)
-                updateAgents(
-                    agents = worldManager.worldState.value.agents,
-                    worldState = worldManager.worldState.value,
-                    navGrid = navGrid,
-                    deltaTimeMs = deltaTime,
-                    nowMs = currentTime
-                )
+                worldManager.advanceTick(deltaTime, currentTime)
 
                 // Batch NavGrid Update
                 val dirtyRect = worldManager.consumeDirtyRect()

@@ -1,14 +1,13 @@
 package com.example.utopia.domain
 
-import android.util.Log
 import androidx.compose.ui.geometry.Offset
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.AgentState
+import com.example.utopia.data.models.SerializableOffset
 import com.example.utopia.data.models.TileType
 import com.example.utopia.data.models.WorldState
 import com.example.utopia.util.Constants
 import kotlin.math.abs
-import kotlin.math.min
 import kotlin.math.sqrt
 import kotlin.random.Random
 
@@ -16,23 +15,16 @@ import kotlin.random.Random
  * DESIGN PRINCIPLE: THE DUMB EXECUTOR
  *
  * This system is responsible ONLY for the mechanics of movement, collision, and animation.
- * It does NOT decide where agents go or why. It consumes paths provided by the Intent/Planning layer.
+ * It does NOT decide where agents go or why.
  *
  * Responsibilities:
- * 1. Path Following: Stepping through waypoints.
- * 2. Physics: Solving collisions and sliding against obstacles via [tryMove].
- * 3. Animation: Updating visual state based on movement.
- * 4. Recovery: Detecting "stuck" states and requesting path refreshes.
+ * 1. Physics: Solving collisions and sliding against obstacles.
+ * 2. Animation: Updating visual state based on movement.
+ * 3. Separation: Keeping agents from overlapping.
  */
 
-private const val WAYPOINT_RADIUS = 2f
-private const val MIN_PROGRESS_EPSILON = 0.001f
 private const val ANIM_TICK_MS = 150L
-
-internal enum class NavReason {
-    FALLBACK,
-    CLEAR_PATH
-}
+private const val DAMPING = 0.985f // Dimensionless damping factor (0.98-0.99 is ideal for 60fps)
 
 internal fun updateAgents(
     agents: List<AgentRuntime>,
@@ -40,8 +32,8 @@ internal fun updateAgents(
     navGrid: NavGrid,
     deltaTimeMs: Long,
     nowMs: Long
-) {
-    for (agent in agents) {
+): List<AgentRuntime> {
+    return agents.map { agent ->
         updateAgentTick(agent, worldState, navGrid, deltaTimeMs, nowMs)
     }
 }
@@ -52,215 +44,149 @@ private fun updateAgentTick(
     navGrid: NavGrid,
     deltaTimeMs: Long,
     nowMs: Long
-) {
-    // Save position snapshot for animation logic
-    agent.lastPosX = agent.x
-    agent.lastPosY = agent.y
+): AgentRuntime {
+    val deltaSeconds = deltaTimeMs / 1000f
     
-    // 1. STATE-DRIVEN ACTION
-    when (agent.state) {
-        AgentState.TRAVELING -> {
-            updateTraveling(agent, worldState, deltaTimeMs, nowMs, navGrid)
-        }
-        else -> {
-            // No action
-        }
-    }
+    // 1. CALCULATE FORCES (Time-independent)
+    val intentForce = calculateIntentForce(agent, worldState)
+    val separationForce = calculateSeparationForce(agent, worldState.agents)
+    val wanderForce = calculateWanderForce(agent)
 
-    // 2. ANIMATION
-    updateAgentAnimation(agent, deltaTimeMs) 
+    // 2. COMBINE AND CLAMP FORCES (Step 3)
+    val totalForce = intentForce.plus(separationForce).plus(wanderForce)
+    
+    // Scale user constants (Tiles -> Pixels) to match world units
+    val scaledMaxForce = Constants.MAX_FORCE * Constants.TILE_SIZE
+    val clampedForce = totalForce.clampMagnitude(scaledMaxForce)
 
-    // 3. Dwell timer
-    if (agent.dwellTimerMs > 0) {
-        agent.dwellTimerMs = (agent.dwellTimerMs - deltaTimeMs).coerceAtLeast(0L)
-    }
-}
+    // 3. INTEGRATE ACCELERATION -> VELOCITY (dt ONCE)
+    val oldVelocity = agent.velocity.toOffset()
+    var newVelocity = oldVelocity.plus(clampedForce.times(deltaSeconds))
 
-internal fun requestNavigation(
-    agent: AgentRuntime,
-    target: Offset?,
-    reason: NavReason,
-    navGrid: NavGrid,
-    worldState: WorldState
-) {
-    Log.d("NavStart", "agent=${agent.id} state=${agent.state} pos=(${agent.x}, ${agent.y})")
+    // 4. APPLY DAMPING (dimensionless)
+    newVelocity = newVelocity.times(DAMPING)
 
-    if (target == null) {
-        agent.pathTiles = emptyList()
-        agent.pathIndex = 0
-        agent.noProgressMs = 0L
-        agent.goalPos = null
+    // 5. SPEED LIMIT (Step 4 - CRITICAL)
+    val speedMult = if (worldState.tiles.getOrNull(agent.gridX)?.getOrNull(agent.gridY) == TileType.ROAD) 
+        Constants.ON_ROAD_SPEED_MULT else Constants.OFF_ROAD_SPEED_MULT
+    
+    val scaledMaxSpeed = Constants.MAX_SPEED * Constants.TILE_SIZE * speedMult
+    newVelocity = newVelocity.clampMagnitude(scaledMaxSpeed)
 
-        if (reason != NavReason.CLEAR_PATH) {
-            if (agent.state == AgentState.TRAVELING) {
-                agent.state = AgentState.IDLE
-            }
-        }
-        return
-    }
+    // 6. INTEGRATE VELOCITY -> POSITION (dt ONCE)
+    val step = newVelocity.times(deltaSeconds)
+    val newPosition = tryMove(agent, step.x, step.y, navGrid)
 
-    agent.state = AgentState.TRAVELING
+    // 7. UPDATE ANIMATION STATE
+    val isMoving = step.getDistance() > 0.01f
+    val nextAnimFrame = if (isMoving) {
+        val totalAnimTime = agent.animTimerMs + deltaTimeMs
+        if (totalAnimTime >= ANIM_TICK_MS) (agent.animFrame + 1) % 4 else agent.animFrame
+    } else 0
+    val nextAnimTimer = if (isMoving) (agent.animTimerMs + deltaTimeMs) % ANIM_TICK_MS else 0L
+    
+    val nextFacingLeft = if (abs(step.x) > 0.01f) step.x < 0 else agent.facingLeft
 
-    val startPos = Offset(agent.x, agent.y)
-    val route = Pathfinding.planRoute(
-        startPos = startPos,
-        targetStructureId = null,
-        targetWorldPos = target,
-        navGrid = navGrid,
-        structures = worldState.structures,
-        requiredClearance = agent.collisionRadius
+    return agent.copy(
+        position = newPosition,
+        velocity = SerializableOffset(newVelocity.x, newVelocity.y),
+        lastPosX = agent.x,
+        lastPosY = agent.y,
+        animFrame = nextAnimFrame,
+        animTimerMs = nextAnimTimer,
+        facingLeft = nextFacingLeft,
+        state = if (isMoving) AgentState.TRAVELING else AgentState.IDLE
     )
-    val path = route.first
-
-    if (path.isEmpty()) {
-        agent.repathCooldownUntilMs = System.currentTimeMillis() + Random.nextLong(1000L, 3000L)
-        agent.pathTiles = emptyList()
-        agent.state = AgentState.IDLE
-    } else {
-        val tiles = path.map { pos ->
-            val gx = (pos.x / Constants.TILE_SIZE).toInt().coerceIn(0, Constants.MAP_TILES_W - 1)
-            val gy = (pos.y / Constants.TILE_SIZE).toInt().coerceIn(0, Constants.MAP_TILES_H - 1)
-            (gx shl 16) or (gy and 0xFFFF)
-        }
-        agent.pathTiles = tiles
-    }
-    agent.pathIndex = 0
-    agent.noProgressMs = 0
-    agent.goalPos = target
 }
 
-internal fun updateTraveling(
-    agent: AgentRuntime,
-    state: WorldState,
-    deltaTimeMs: Long,
-    nowMs: Long,
-    navGrid: NavGrid
-) {
-    val target = agent.pathTiles.getOrNull(agent.pathIndex)?.let {
-        val x = (it ushr 16) * Constants.TILE_SIZE + Constants.TILE_SIZE / 2f
-        val y = (it and 0xFFFF) * Constants.TILE_SIZE + Constants.TILE_SIZE / 2f
-        x to y
-    } ?: agent.goalPos?.let { it.x to it.y }
+private fun calculateIntentForce(agent: AgentRuntime, worldState: WorldState): Offset {
+    val intent = agent.currentIntent
+    if (intent == "Idle" || intent == "Wandering" || intent == "IDLE") return Offset.Zero
 
-    if (target == null) {
-        agent.state = AgentState.IDLE
-        requestNavigation(agent, null, NavReason.CLEAR_PATH, navGrid, state)
-        return
+    val targetType = when(intent) {
+        "seek_sleep", "seek_stability" -> com.example.utopia.data.models.PoiType.HOUSE
+        "seek_social" -> com.example.utopia.data.models.PoiType.PLAZA
+        "seek_fun" -> com.example.utopia.data.models.PoiType.TAVERN
+        "seek_stimulation" -> com.example.utopia.data.models.PoiType.STORE
+        else -> return Offset.Zero
     }
 
-    val (targetX, targetY) = target
+    val targetPoi = worldState.pois
+        .filter { it.type == targetType }
+        .minByOrNull { it.pos.toOffset().minus(agent.position.toOffset()).getDistanceSquared() }
+        ?: return Offset.Zero
 
-    if (nowMs < agent.yieldUntilMs || agent.dwellTimerMs > 0) {
-        return
-    }
-
-    if (agent.noProgressMs > 2500L && agent.goalPos != null) {
-        agent.noProgressMs = 0
-        requestNavigation(agent, agent.goalPos, NavReason.FALLBACK, navGrid, state)
-        return
-    }
-
-    val dx = targetX - agent.x
-    val dy = targetY - agent.y
-    val distSq = dx * dx + dy * dy
-
-    val isFinalSegment = agent.pathTiles.isEmpty() || agent.pathIndex >= agent.pathTiles.lastIndex
-
-    val arrivalRadius = if (isFinalSegment) {
-        WAYPOINT_RADIUS + agent.collisionRadius
+    val toTarget = targetPoi.pos.toOffset().minus(agent.position.toOffset())
+    val dist = toTarget.getDistance()
+    
+    // Step 2: SCALE INTENT FORCE (Tiles/sec^2 -> Pixels/sec^2)
+    return if (dist > 5f) {
+        toTarget.div(dist).times(Constants.INTENT_FORCE * Constants.TILE_SIZE)
     } else {
-        WAYPOINT_RADIUS
+        Offset.Zero
     }
-    val arrivalRadiusSq = arrivalRadius * arrivalRadius
+}
 
-    if (distSq <= arrivalRadiusSq) {
-        if (isFinalSegment) {
-            agent.state = AgentState.IDLE
-            requestNavigation(agent, null, NavReason.CLEAR_PATH, navGrid, state)
-        } else {
-            agent.pathIndex++
+private fun calculateSeparationForce(agent: AgentRuntime, allAgents: List<AgentRuntime>): Offset {
+    val radius = Constants.AGENT_COLLISION_RADIUS
+    var push = Offset.Zero
+    
+    for (other in allAgents) {
+        if (other.id == agent.id) continue
+        val toAgent = agent.position.toOffset().minus(other.position.toOffset())
+        val distSq = toAgent.getDistanceSquared()
+        
+        if (distSq < radius * radius && distSq > 0.01f) {
+            val dist = sqrt(distSq)
+            val forceMagnitude = (radius - dist) / radius
+            push = push.plus(toAgent.div(dist).times(forceMagnitude * Constants.SEPARATION_FORCE * Constants.TILE_SIZE))
         }
-        return
     }
+    return push
+}
 
-    val speedMult = if (state.tiles[agent.gridX][agent.gridY] == TileType.ROAD) Constants.ON_ROAD_SPEED_MULT else Constants.OFF_ROAD_SPEED_MULT
-    val baseSpeed = Constants.AGENT_BASE_SPEED_FACTOR * speedMult
-    val movementScalar = 2.0f
-    val maxMovementMag = baseSpeed * deltaTimeMs * movementScalar
-
-    val dist = sqrt(distSq)
-    val actualStep = min(maxMovementMag, dist)
-
-    val desiredStepX = (dx / dist) * actualStep
-    val desiredStepY = (dy / dist) * actualStep
-
-    if (abs(desiredStepX) > 0.01f) agent.facingLeft = desiredStepX < 0
-
-    val lastX = agent.x
-    val lastY = agent.y
-    tryMove(agent, desiredStepX, desiredStepY, navGrid)
-
-    val deltaX = agent.x - lastX
-    val deltaY = agent.y - lastY
-    val forwardProgress = deltaX * (dx / dist) + deltaY * (dy / dist)
-
-    if (forwardProgress > MIN_PROGRESS_EPSILON) {
-        agent.noProgressMs = 0
-    } else if (desiredStepX != 0f || desiredStepY != 0f) {
-        agent.noProgressMs += deltaTimeMs
-    }
+private fun calculateWanderForce(agent: AgentRuntime): Offset {
+    if (agent.state != AgentState.IDLE) return Offset.Zero
+    val seed = agent.id.hashCode().toLong() + (System.currentTimeMillis() / 2000)
+    val rng = Random(seed)
+    return Offset(rng.nextFloat() * 2 - 1, rng.nextFloat() * 2 - 1)
+        .times(Constants.WANDER_FORCE * Constants.TILE_SIZE)
 }
 
 private fun tryMove(
     agent: AgentRuntime,
-    desiredStepX: Float,
-    desiredStepY: Float,
+    dx: Float,
+    dy: Float,
     navGrid: NavGrid
-) {
-    var appliedStepX = 0f
-    var appliedStepY = 0f
-
-    val targetX = agent.x + desiredStepX
-    val targetY = agent.y + desiredStepY
+): SerializableOffset {
+    val targetX = agent.x + dx
+    val targetY = agent.y + dy
 
     val targetGX = (targetX / Constants.TILE_SIZE).toInt()
     val targetGY = (targetY / Constants.TILE_SIZE).toInt()
 
-    if (navGrid.isWalkable(targetGX, targetGY)) {
-        appliedStepX = desiredStepX
-        appliedStepY = desiredStepY
+    return if (navGrid.isWalkable(targetGX, targetGY)) {
+        SerializableOffset(targetX, targetY)
     } else {
-        val xOnlyGX = ((agent.x + desiredStepX) / Constants.TILE_SIZE).toInt()
+        val xOnlyGX = ((agent.x + dx) / Constants.TILE_SIZE).toInt()
+        var finalX = agent.x
         if (navGrid.isWalkable(xOnlyGX, agent.gridY)) {
-            appliedStepX = desiredStepX
+            finalX = targetX
         }
 
-        val yOnlyGY = ((agent.y + desiredStepY) / Constants.TILE_SIZE).toInt()
+        val yOnlyGY = ((agent.y + dy) / Constants.TILE_SIZE).toInt()
+        var finalY = agent.y
         if (navGrid.isWalkable(agent.gridX, yOnlyGY)) {
-            appliedStepY = desiredStepY
+            finalY = targetY
         }
+        SerializableOffset(finalX, finalY)
     }
-
-    agent.x += appliedStepX
-    agent.y += appliedStepY
-    agent.gridX = (agent.x / Constants.TILE_SIZE).toInt()
-    agent.gridY = (agent.y / Constants.TILE_SIZE).toInt()
 }
 
-internal fun updateAgentAnimation(
-    agent: AgentRuntime,
-    deltaTimeMs: Long
-) {
-    val isMoving = agent.state == AgentState.TRAVELING && (abs(agent.x - agent.lastPosX) > 0.01f || abs(agent.y - agent.lastPosY) > 0.01f)
-
-    if (isMoving) {
-        agent.animTimerMs += deltaTimeMs
-        if (agent.animTimerMs >= ANIM_TICK_MS) {
-            agent.animTimerMs = 0L
-            agent.animFrame = (agent.animFrame + 1) % 4
-        }
-    } else {
-        agent.animTimerMs = 0L
-        agent.animFrame = 0
-    }
+private fun Offset.plus(other: Offset) = Offset(x + other.x, y + other.y)
+private fun Offset.times(scalar: Float) = Offset(x * scalar, y * scalar)
+private fun Offset.div(scalar: Float) = Offset(x / scalar, y / scalar)
+private fun Offset.clampMagnitude(max: Float): Offset {
+    val mag = getDistance()
+    return if (mag > max) this.div(mag).times(max) else this
 }

@@ -59,22 +59,15 @@ fun worldToScreen(worldPos: Offset, camera: Camera2D): Offset {
     return (worldPos + camera.offset) * camera.zoom
 }
 
+fun worldSizeToScreen(worldSize: Size, camera: Camera2D): Size {
+    return worldSize * camera.zoom
+}
+
 /**
  * Camera-aware transforms: Screen -> World
  */
 fun screenToWorld(screenPos: Offset, camera: Camera2D): Offset {
     return (screenPos / camera.zoom) - camera.offset
-}
-
-fun worldSizeToScreen(worldSize: Size, camera: Camera2D): Size {
-    return worldSize * camera.zoom
-}
-
-fun worldRectToScreenRect(worldRect: Rect, camera: Camera2D): Rect {
-    return Rect(
-        offset = worldToScreen(worldRect.topLeft, camera),
-        size = worldSizeToScreen(worldRect.size, camera)
-    )
 }
 
 fun Camera2D.computeVisibleBounds(screenSize: Size): VisibleBounds {
@@ -179,32 +172,6 @@ fun structureHitBoundsWorld(structure: Structure): Rect {
         val topLeft = center - Offset(halfTile, halfTile)
         return Rect(topLeft, Size(tileSize, tileSize))
     }
-}
-
-/**
- * Logical Bounds (Owned Area) - Expanded by 2 tiles in all directions.
- * Used for house territory, etc. (Removed job/assignment references)
- */
-fun structureLogicalBoundsWorld(structure: Structure): Rect {
-    val type = structure.type
-    val tileSize = Constants.TILE_SIZE
-    val expansion = tileSize * 2f // Expanded to 2 tiles based on user request to "Expand"
-    
-    // Base bounds for the structure's physical space (using the visual size as a base)
-    val baseWorldRect = Rect(
-        left = structure.x,
-        top = structure.y,
-        right = structure.x + type.worldWidth,
-        bottom = structure.y + type.worldHeight
-    )
-    
-    // Expansion by 2 tiles in all directions
-    return Rect(
-        left = baseWorldRect.left - expansion,
-        top = baseWorldRect.top - expansion,
-        right = baseWorldRect.right + expansion,
-        bottom = baseWorldRect.bottom + expansion
-    )
 }
 
 /**

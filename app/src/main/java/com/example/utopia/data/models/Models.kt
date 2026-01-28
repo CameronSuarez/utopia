@@ -83,14 +83,10 @@ data class Structure(
     var customName: String? = null
 )
 
-// Removed: @Serializable enum class DayPhase { NIGHT, MORNING, AFTERNOON, EVENING }
-// Removed: @Serializable enum class Personality
 @Serializable
 enum class Gender { MALE, FEMALE }
 @Serializable
 data class AppearanceSpec(val skinToneId: Int, val hairColorId: Int, val tunicColorId: Int, val hairStyleId: Int, val bodyWidthMod: Float, val bodyHeightMod: Float, val hasBeard: Boolean, val hasHood: Boolean)
-// Removed: @Serializable data class SocialMemoryEntry
-// Removed: @Serializable data class AgentProfile
 @Serializable
 data class AgentProfile(val gender: Gender = Gender.MALE, var appearance: AppearanceSpec? = null)
 
@@ -109,177 +105,51 @@ data class POI(val id: String, val type: PoiType, val pos: SerializableOffset)
 data class SerializableOffset(val x: Float, val y: Float) {
     fun toOffset() = Offset(x, y)
 }
-// Simplified SoftMemory (now a regular class)
-@Serializable
-class SoftMemory()
 
-class AgentRuntime(
-    val id: String,
-    val shortId: Int,
-    var profile: AgentProfile,
-    var x: Float,
-    var y: Float,
-    var gridX: Int,
-    var gridY: Int,
-    var name: String = "Villager",
-    // Removed Personality
-    var appearance: AppearanceVariant = AppearanceVariant.DEFAULT,
-    var state: AgentState = AgentState.IDLE,
-    var previousState: AgentState = AgentState.IDLE,
-    var homeId: String? = null,
-    var emoji: String? = null,
-    var lastPoiId: String? = null,
-    var goalPos: Offset? = null,
-    var pathTiles: List<Int> = emptyList(),
-    var pathIndex: Int = 0,
-    var repathCooldownUntilMs: Long = 0,
-    var noProgressMs: Long = 0,
-    var lastPosX: Float = 0f,
-    var lastPosY: Float = 0f,
-    // Removed: blockedByAgent
-    var facingLeft: Boolean = false,
-    var animFrame: Int = 0,
-    var animTimerMs: Long = 0,
-    // Removed: animationSpeed
-    var phaseStaggerMs: Long = 0,
-    var dwellTimerMs: Long = 0,
-    // Removed: workAnimKind
-    var workAnimEndTimeMs: Long = 0,
-    var goalBlockedUntilMs: Long = 0,
-    var yieldUntilMs: Long = 0,
-    val collisionRadius: Float = Constants.AGENT_COLLISION_RADIUS,
-    var reservedSlot: GridOffset? = null,
-    var reservedStructureId: String? = null,
-    var detourPos: Offset? = null,
-    var resumePos: Offset? = null,
-    var avoidanceSide: Float = 0f,
-    var avoidanceCommitUntilMs: Long = 0,
-    var memory: SoftMemory = SoftMemory()
+@Serializable
+data class PersonalityVector(
+    var expressiveness: Float, // [-1, 1]
+    var positivity: Float,     // [-1, 1]
+    var playfulness: Float,    // [-1, 1]
+    var warmth: Float,         // [-1, 1]
+    var sensitivity: Float     // [-1, 1]
 )
 
 @Serializable
-data class Agent(
-    val id: String,
-    val shortId: Int,
-    var profile: AgentProfile,
-    var name: String,
-    // Removed Personality
-    var appearance: AppearanceVariant,
-    var serPosition: SerializableOffset,
-    var gridX: Int,
-    var gridY: Int,
-    var state: AgentState,
-    var previousState: AgentState,
-    var homeId: String?,
-    var emoji: String?,
-    var lastPoiId: String?,
-    var goalPos: SerializableOffset? = null,
-    var pathTiles: List<Int> = emptyList(),
-    var pathIndex: Int = 0,
-    var repathCooldownUntilMs: Long = 0,
-    var noProgressMs: Long = 0,
-    var lastPosX: Float = 0f,
-    var lastPosY: Float = 0f,
-    var phaseStaggerMs: Long,
-    var dwellTimerMs: Long,
-    var facingLeft: Boolean,
-    var animFrame: Int,
-    var memory: SoftMemory,
-    // Removed: workAnimKind
-    var workAnimEndTimeMs: Long,
-    var goalBlockedUntilMs: Long,
-    var yieldUntilMs: Long = 0,
-    val collisionRadius: Float = Constants.AGENT_COLLISION_RADIUS,
-    var reservedSlot: GridOffset? = null,
-    var reservedStructureId: String? = null,
-    var serDetourPos: SerializableOffset? = null,
-    var serResumePos: SerializableOffset? = null,
-    var avoidanceSide: Float = 0f,
-    var avoidanceCommitUntilMs: Long = 0,
+data class Needs(
+    // Homeostatic
+    var sleep: Float,       // [0, 100]
+    var stability: Float,   // [0, 100]
+    var social: Float,      // [0, 100]
+    var `fun`: Float,         // [0, 100]
+
+    // Destabilizing
+    var stimulation: Float  // [0, 100]
 )
 
-fun AgentRuntime.toAgent(): Agent {
-    return Agent(
-        id = id,
-        shortId = shortId,
-        profile = profile, // Profile is now minimal, no deep copy needed
-        name = name,
-        // Removed Personality
-        appearance = appearance,
-        serPosition = SerializableOffset(x, y),
-        gridX = gridX,
-        gridY = gridY,
-        state = state,
-        previousState = previousState,
-        homeId = homeId,
-        emoji = emoji,
-        lastPoiId = lastPoiId,
-        goalPos = goalPos?.let { SerializableOffset(it.x, it.y) },
-        pathTiles = pathTiles,
-        pathIndex = pathIndex,
-        repathCooldownUntilMs = repathCooldownUntilMs,
-        noProgressMs = noProgressMs,
-        lastPosX = lastPosX,
-        lastPosY = lastPosY,
-        phaseStaggerMs = phaseStaggerMs,
-        dwellTimerMs = dwellTimerMs,
-        facingLeft = facingLeft,
-        animFrame = animFrame,
-        memory = memory, // SoftMemory is now SoftMemory()
-        workAnimEndTimeMs = workAnimEndTimeMs,
-        goalBlockedUntilMs = goalBlockedUntilMs,
-        yieldUntilMs = yieldUntilMs,
-        collisionRadius = collisionRadius,
-        reservedSlot = reservedSlot,
-        reservedStructureId = reservedStructureId,
-        serDetourPos = detourPos?.let { SerializableOffset(it.x, it.y) },
-        serResumePos = resumePos?.let { SerializableOffset(it.x, it.y) },
-        avoidanceSide = avoidanceSide,
-        avoidanceCommitUntilMs = avoidanceCommitUntilMs,
-    )
-}
+@Serializable
+data class SocialMemory(
+    val affinity: MutableMap<String, Float> = mutableMapOf() // AgentID -> Affinity Score [-100, 100]
+)
 
-fun Agent.toRuntime(): AgentRuntime {
-    return AgentRuntime(
-        id = id,
-        shortId = shortId,
-        profile = profile,
-        x = serPosition.x,
-        y = serPosition.y,
-        gridX = gridX,
-        gridY = gridY,
-        name = name,
-        // Removed Personality
-        appearance = appearance,
-        state = state,
-        previousState = previousState,
-        homeId = homeId,
-        emoji = emoji,
-        lastPoiId = lastPoiId,
-        goalPos = goalPos?.toOffset(),
-        pathTiles = pathTiles,
-        pathIndex = pathIndex,
-        repathCooldownUntilMs = repathCooldownUntilMs,
-        noProgressMs = noProgressMs,
-        lastPosX = lastPosX,
-        lastPosY = lastPosY,
-        phaseStaggerMs = phaseStaggerMs,
-        dwellTimerMs = dwellTimerMs,
-        facingLeft = facingLeft,
-        animFrame = animFrame,
-        memory = memory, // SoftMemory is now SoftMemory()
-        workAnimEndTimeMs = workAnimEndTimeMs,
-        goalBlockedUntilMs = goalBlockedUntilMs,
-        yieldUntilMs = yieldUntilMs,
-        collisionRadius = collisionRadius,
-        reservedSlot = reservedSlot,
-        reservedStructureId = reservedStructureId,
-        detourPos = serDetourPos?.toOffset(),
-        resumePos = serResumePos?.toOffset(),
-        avoidanceSide = avoidanceSide,
-        avoidanceCommitUntilMs = avoidanceCommitUntilMs,
-    )
-}
+@Serializable
+data class SocialField(
+    val id: String,
+    val center: SerializableOffset,
+    var radius: Float,
+    var energy: Float,
+    val participants: MutableList<String>
+)
+
+
+@Serializable
+data class EmojiSignal(
+    val senderId: String,
+    val emojiType: String, // e.g. "HAPPY", "ANGRY", "WAVE"
+    val position: SerializableOffset,
+    val timestamp: Long,
+    val lifeTime: Int = 2 // Ticks it lasts for visibility/processing
+)
 
 data class WorldState(
     val tiles: Array<Array<TileType>>,
@@ -287,8 +157,8 @@ data class WorldState(
     val agents: List<AgentRuntime> = emptyList(),
     val props: List<PropInstance> = emptyList(),
     val pois: List<POI> = emptyList(),
-    // Removed: relationships - Keep world state completely inert
-    // Removed: timeOfDay
+    val socialFields: List<SocialField> = emptyList(),
+    val emojiSignals: List<EmojiSignal> = emptyList(),
     val nextAgentId: Int = 0,
     val roadRevision: Int = 0,
     val structureRevision: Int = 0,
@@ -305,8 +175,8 @@ data class WorldState(
         if (agents != other.agents) return false
         if (props != other.props) return false
         if (pois != other.pois) return false
-        // Removed: relationships
-        // Removed: timeOfDay
+        if (socialFields != other.socialFields) return false
+        if (emojiSignals != other.emojiSignals) return false
         if (nextAgentId != other.nextAgentId) return false
         if (roadRevision != other.roadRevision) return false
         if (structureRevision != other.structureRevision) return false
@@ -321,8 +191,8 @@ data class WorldState(
         result = 31 * result + agents.hashCode()
         result = 31 * result + props.hashCode()
         result = 31 * result + pois.hashCode()
-        // Removed: relationships
-        // Removed: timeOfDay
+        result = 31 * result + socialFields.hashCode()
+        result = 31 * result + emojiSignals.hashCode()
         result = 31 * result + nextAgentId
         result = 31 * result + roadRevision
         result = 31 * result + structureRevision
@@ -336,11 +206,11 @@ data class WorldStateData(
     val version: Int = 14,
     val tiles: List<List<TileType>>,
     val structures: List<Structure>,
-    val agents: List<Agent>,
+    val agents: List<AgentRuntime>,
     val props: List<PropInstance> = emptyList(),
     val pois: List<POI> = emptyList(),
-    // Removed: relationships
-    // Removed: timeOfDay
+    val socialFields: List<SocialField> = emptyList(),
+    val emojiSignals: List<EmojiSignal> = emptyList(),
     val nextAgentId: Int = 0,
     val roadRevision: Int = 0,
     val structureRevision: Int = 0

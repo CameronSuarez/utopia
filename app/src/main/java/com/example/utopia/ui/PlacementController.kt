@@ -249,13 +249,6 @@ class PlacementController(
         onWorldChanged()
     }
 
-    fun undoLastStroke() {
-        worldManager.undoStructures(currentStrokeIds)
-        onTilesPlaced?.invoke(-getToolCost(activeTool!!)*currentStrokeIds.size)
-        currentStrokeIds.clear()
-        onWorldChanged()
-    }
-
     private fun getLine(start: IntOffset, end: IntOffset): List<IntOffset> {
         val line = mutableListOf<IntOffset>()
         var x = start.x

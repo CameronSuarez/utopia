@@ -1,7 +1,6 @@
 package com.example.utopia.ui
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,7 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,7 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,14 +32,11 @@ import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.AppearanceSpec
 import com.example.utopia.data.models.AppearanceVariant
 import com.example.utopia.data.models.Gender
-// Removed: import com.example.utopia.data.models.SocialMemoryEntry
 import kotlin.math.abs
 
 @Composable
 fun AgentProfilePanel(
     agent: AgentRuntime,
-    // Removed: allAgents: List<AgentRuntime>,
-    // Removed: relationships: Map<Long, Byte>,
     onClose: () -> Unit
 ) {
     val portraitCache = remember { PortraitCache(maxEntries = 128) }
@@ -69,6 +63,10 @@ fun AgentProfilePanel(
                 HeaderRow(onClose = onClose)
                 Spacer(modifier = Modifier.height(12.dp))
                 BasicInfoSection(agent, portraitCache)
+                Spacer(modifier = Modifier.height(16.dp))
+                NeedsSection(agent = agent)
+                Spacer(modifier = Modifier.height(16.dp))
+                PressuresSection(agent = agent)
                 
                 // REMOVED: All social memory and relationship display logic.
             }
@@ -111,10 +109,39 @@ private fun BasicInfoSection(agent: AgentRuntime, portraitCache: PortraitCache) 
         Column {
             Text(agent.name, color = Color.White, style = MaterialTheme.typography.titleLarge)
             Text("Villager", color = Color.LightGray, fontSize = 12.sp) // Hardcoded "Villager"
-            // Removed: Text(agent.personality.name, color = Color.Gray, fontSize = 12.sp)
+            Text("Intent: ${agent.currentIntent}", color = Color.Cyan, fontSize = 12.sp)
         }
     }
 }
+
+@Composable
+private fun NeedsSection(agent: AgentRuntime) {
+    Column {
+        Text("Needs", color = Color.White, style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("Sleep: ${"%.2f".format(agent.needs.sleep)}", color = Color.LightGray)
+        Text("Stability: ${"%.2f".format(agent.needs.stability)}", color = Color.LightGray)
+        Text("Social: ${"%.2f".format(agent.needs.social)}", color = Color.LightGray)
+        Text("Fun: ${"%.2f".format(agent.needs.`fun`)}", color = Color.LightGray)
+        Text("Stimulation: ${"%.2f".format(agent.needs.stimulation)}", color = Color.LightGray)
+    }
+}
+
+@Composable
+private fun PressuresSection(agent: AgentRuntime) {
+    Column {
+        Text("Pressures", color = Color.White, style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        if (agent.transientPressures.isEmpty()) {
+            Text("None", color = Color.Gray)
+        } else {
+            agent.transientPressures.forEach { (key, value) ->
+                Text("$key: ${"%.2f".format(value)}", color = Color.LightGray)
+            }
+        }
+    }
+}
+
 
 // REMOVED: SocialEntryRow
 // REMOVED: SocialEntryUi
@@ -130,7 +157,7 @@ private fun fallbackAppearanceSpec(gender: Gender, seed: Int): AppearanceSpec {
         tunicColorId = (safeSeed / 5) % TUNIC_COLORS.size,
         hairStyleId = hairStylePool[safeSeed % hairStylePool.size],
         bodyWidthMod = if (gender == Gender.MALE) -0.5f + widthT * 3.5f else -1.5f + widthT * 3.0f,
-        bodyHeightMod = if (gender == Gender.MALE) -2f + heightT * 3.0f else -1f + heightT * 4.0f,
+        bodyHeightMod = if (gender == Gender.MALE) -2f + heightT * 4.0f else -1f + heightT * 4.0f,
         hasBeard = gender == Gender.MALE && (safeSeed % 10) < 3,
         hasHood = (safeSeed % 10) == 0
     )

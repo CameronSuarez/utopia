@@ -14,10 +14,6 @@ import com.example.utopia.data.models.AppearanceSpec
 import com.example.utopia.data.models.AppearanceVariant
 import com.example.utopia.data.models.Gender
 // REMOVED: import com.example.utopia.data.models.Personality
-import com.example.utopia.data.models.Structure
-import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.sin
 import kotlin.random.Random
 
 // NOTE: Visual scale only. Logical agent size is unchanged by design.
@@ -39,20 +35,9 @@ internal data class AnimState(
 
 private val loggedMissingAppearance = mutableSetOf<Int>()
 
-fun DrawScope.drawAgents(
-    agents: List<AgentRuntime>,
-    structures: List<Structure>,
-    camera: Camera2D,
-    timeMs: Long
-) {
-    agents.forEach { drawAgentItem(it, structures, camera, timeMs) }
-}
-
 fun DrawScope.drawAgentItem(
     agent: AgentRuntime,
-    structures: List<Structure>,
-    camera: Camera2D,
-    timeMs: Long
+    camera: Camera2D
 ) {
     val screenPos = worldToScreen(Offset(agent.x, agent.y), camera)
     val scale = AGENT_VISUAL_SCALE * camera.zoom
@@ -72,8 +57,8 @@ fun DrawScope.drawAgentItem(
 
     var bobY = 0f
     var squashX = 0f
-    var swayX = 0f
-    var headBobY = 0f
+    val swayX = 0f
+    val headBobY = 0f
 
     if (isSleeping) {
         bobY = 4f
@@ -127,8 +112,6 @@ internal fun DrawScope.renderAgentLayers(
     val baseBodyWidth = (if (gender == Gender.MALE) 12.5f else 11f) + spec.bodyWidthMod
     val baseBodyHeight = (if (gender == Gender.MALE) 16f else 17f) + spec.bodyHeightMod
 
-    val agentColor = baseTunicColor
-
     withTransform({
         scale(renderParams.scale, renderParams.scale, pivot = screenPos)
     }) {
@@ -138,7 +121,7 @@ internal fun DrawScope.renderAgentLayers(
         }
 
         drawRoundRect(
-            color = agentColor,
+            color = baseTunicColor,
             topLeft = Offset(screenPos.x - baseBodyWidth / 2f - anim.squashX / 2f + anim.swayX, screenPos.y - baseBodyHeight + anim.bobY),
             size = Size(baseBodyWidth + anim.squashX, baseBodyHeight - anim.bobY / 2f),
             cornerRadius = CornerRadius(3f, 3f)
@@ -157,7 +140,6 @@ internal fun DrawScope.renderAgentLayers(
                 }
             }
             // Removed other variants
-            else -> {}
         }
 
         // 4. Belt
@@ -217,7 +199,7 @@ internal fun DrawScope.renderAgentLayers(
                 quadraticTo(screenPos.x - 7f + anim.swayX, headY - 8f, screenPos.x + anim.swayX, headY - 9f)
                 quadraticTo(screenPos.x + 7f + anim.swayX, headY - 8f, screenPos.x + 6f + anim.swayX, headY + 2f)
             }
-            drawPath(hoodPath, agentColor.copy(alpha = 0.9f))
+            drawPath(hoodPath, baseTunicColor.copy(alpha = 0.9f))
         } else {
             when (hairStyle) {
                 1 -> drawRect(hairColor, Offset(screenPos.x - 5f + anim.swayX, headY - 5.5f), Size(10f, 3f)) // Short

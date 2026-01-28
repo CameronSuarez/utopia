@@ -113,7 +113,7 @@ fun DrawScope.drawCity(
                     depthX = agent.x,
                     tieBreak = agent.shortId
                 ) {
-                    drawAgentItem(agent, worldState.structures, camera, timeMs)
+                    drawAgentItem(agent, camera)
                 })
 
                 add(RenderItem(

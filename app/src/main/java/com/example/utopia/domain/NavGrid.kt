@@ -7,7 +7,6 @@ import androidx.compose.ui.geometry.Size
 import com.example.utopia.data.models.PropInstance
 import com.example.utopia.data.models.PropType
 import com.example.utopia.data.models.Structure
-import com.example.utopia.data.models.StructureType
 import com.example.utopia.data.models.TileType
 import com.example.utopia.util.Constants
 
@@ -131,9 +130,11 @@ class NavGrid(val width: Int = Constants.MAP_TILES_W, val height: Int = Constant
         recalculateClearanceField(if (dirtyRect != null) regionBounds else null)
 
         // Validation mode: compares incremental result against a fresh full rebuild
-        if (dirtyRect != null && ENABLE_INCREMENTAL_VALIDATION) {
-            validateIncrementalUpdate(tiles, structures, props)
-        } else if (dirtyRect == null) {
+        if (dirtyRect != null) {
+            if (ENABLE_INCREMENTAL_VALIDATION) {
+                validateIncrementalUpdate(tiles, structures, props)
+            }
+        } else {
             // Full update successful, clear any previous validation error
             lastValidationError = null
         }
