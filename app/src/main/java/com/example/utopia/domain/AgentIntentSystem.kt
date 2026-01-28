@@ -1,6 +1,7 @@
 package com.example.utopia.domain
 
 import com.example.utopia.data.models.AgentRuntime
+import com.example.utopia.util.Constants
 
 /**
  * The beginning of the Agent's "Brain".
@@ -43,6 +44,13 @@ object AgentIntentSystem {
         // Pressure for stimulation grows as the need increases.
         pressures["seek_stimulation"] = needs.stimulation / 100f
 
+        // --- Momentum Bias (Fix C) ---
+        // Boost the current intent slightly so agents don't flip-flop between two close needs.
+        val current = agent.currentIntent
+        if (current != "Idle" && current != "Wandering" && current != "IDLE") {
+            pressures[current] = (pressures[current] ?: 0f) + Constants.MOMENTUM_BIAS
+        }
+
         return pressures.filter { it.value > 0.05f } // Ignore trivial pressures
     }
 
@@ -51,10 +59,25 @@ object AgentIntentSystem {
      * This is the "winner-take-all" model.
      *
      * @param agent The agent to evaluate.
+     * @param nowMs The current world time in milliseconds.
      * @return The name of the selected intent (e.g., "seek_sleep").
      */
-    fun selectIntent(agent: AgentRuntime): String {
+    fun selectIntent(agent: AgentRuntime, nowMs: Long): String {
+        // --- Action Commitment Window (Fix A) ---
+        // If we recently started an intent, stick to it unless it's gone completely.
+        val timeSinceStart = nowMs - agent.intentStartTimeMs
+        val isLocked = timeSinceStart < Constants.INTENT_COMMITMENT_MS
+        
         val pressures = agent.transientPressures
+        val currentIntent = agent.currentIntent
+
+        if (isLocked && currentIntent != "Idle" && currentIntent != "Wandering" && currentIntent != "IDLE") {
+            // Only stick to it if it still has *some* pressure (hasn't been fully satisfied)
+            if ((pressures[currentIntent] ?: 0f) > 0.1f) {
+                return currentIntent
+            }
+        }
+
         if (pressures.isEmpty()) {
             return "Idle"
         }

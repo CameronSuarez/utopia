@@ -128,7 +128,7 @@ class WorldManager(private val navGrid: NavGrid) {
 
         // 1. Needs (Pure Transformation)
         val agentsWithNeeds = startState.agents.map { agent ->
-            AgentNeedsSystem.updateNeeds(agent, deltaSeconds)
+            AgentNeedsSystem.updateNeeds(agent, deltaSeconds, startState)
         }
         val stateWithNeeds = startState.copy(agents = agentsWithNeeds)
 
@@ -145,8 +145,14 @@ class WorldManager(private val navGrid: NavGrid) {
         // 4. Intent
         val agentsWithIntent = stateWithRelationships.agents.map { agent ->
             val pressures = AgentIntentSystem.calculatePressures(agent)
-            val intent = AgentIntentSystem.selectIntent(agent.copy(transientPressures = pressures))
-            agent.copy(transientPressures = pressures, currentIntent = intent)
+            val nextIntent = AgentIntentSystem.selectIntent(agent.copy(transientPressures = pressures), nowMs)
+            val intentChanged = nextIntent != agent.currentIntent
+            
+            agent.copy(
+                transientPressures = pressures,
+                currentIntent = nextIntent,
+                intentStartTimeMs = if (intentChanged) nowMs else agent.intentStartTimeMs
+            )
         }
         val stateWithIntent = stateWithRelationships.copy(agents = agentsWithIntent)
 

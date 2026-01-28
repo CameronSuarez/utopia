@@ -3,6 +3,7 @@ package com.example.utopia.data.models
 import androidx.compose.ui.geometry.Offset
 import com.example.utopia.util.Constants
 import kotlinx.serialization.Serializable
+import androidx.compose.ui.geometry.Rect
 
 // Constants
 private const val TILE_PIXEL_SIZE = 16f // The dimension of one tile in pixels, for converting sprite art to world units.
@@ -54,6 +55,12 @@ enum class StructureType(
     PLAZA(PlacementBehavior.STAMP, 48f, 32f, blocksNavigation = true, baselineTileY = 3),
     TAVERN(PlacementBehavior.STAMP, 56f, 50f, blocksNavigation = true, capacity = 4, baselineTileY = 3); // Removed isHotspot here
 
+    val providesSleep: Boolean get() = this == HOUSE || this == CASTLE
+    val providesSocial: Boolean get() = this == PLAZA || this == TAVERN
+    val providesFun: Boolean get() = this == TAVERN || this == STORE
+    val providesStability: Boolean get() = this == HOUSE
+    val providesStimulation: Boolean get() = this == STORE || this == WORKSHOP || this == CASTLE
+
     /** The physical width of the structure's footprint in world units. Used for collision and NavGrid baking. */
     val worldWidth: Float
         get() = (spriteWidthPx / TILE_PIXEL_SIZE) * Constants.TILE_SIZE * Constants.WORLD_SCALE
@@ -81,7 +88,14 @@ data class Structure(
     val y: Float,
     val residents: List<String> = emptyList(),
     var customName: String? = null
-)
+) {
+    fun getWorldFootprint(): Rect {
+        return Rect(
+            offset = Offset(x, y - type.worldHeight),
+            size = androidx.compose.ui.geometry.Size(type.worldWidth, type.worldHeight)
+        )
+    }
+}
 
 @Serializable
 enum class Gender { MALE, FEMALE }
@@ -96,7 +110,7 @@ enum class AppearanceVariant { DEFAULT }
 
 // Simplified Agent State: only transport/idle/sleep remain
 @Serializable
-enum class AgentState { IDLE, TRAVELING, SLEEPING }
+enum class AgentState { IDLE, TRAVELING, SLEEPING, SOCIALIZING }
 @Serializable
 enum class PoiType { HOUSE, STORE, WORKSHOP, CASTLE, PLAZA, TAVERN }
 @Serializable
@@ -165,6 +179,41 @@ data class WorldState(
     val version: Int = 14
 ) {
     fun copyTiles(): Array<Array<TileType>> = Array(tiles.size) { x -> tiles[x].copyOf() }
+
+    fun getTileAtWorld(pos: Offset): TileType {
+        val gx = (pos.x / Constants.TILE_SIZE).toInt()
+        val gy = (pos.y / Constants.TILE_SIZE).toInt()
+        return if (gx in 0 until Constants.MAP_TILES_W && gy in 0 until Constants.MAP_TILES_H) {
+            tiles[gx][gy]
+        } else {
+            TileType.GRASS_LIGHT
+        }
+    }
+    fun getStructureAt(pos: Offset): Structure? {
+        return structures.firstOrNull {
+            val r = it.getWorldFootprint()
+            pos.x >= r.left &&
+                    pos.x <= r.right &&
+                    pos.y >= r.top &&
+                    pos.y <= r.bottom
+        }
+    }
+    /**
+     * Returns the structure whose influence area (lot) contains the given world position.
+     * Uses the standard ownership margins (2x3 tiles).
+     */
+    fun getInfluencingStructure(pos: Offset): Structure? {
+        return structures.firstOrNull { s ->
+            val footprint = s.getWorldFootprint()
+            val influenceRect = Rect(
+                left = footprint.left - 2 * Constants.TILE_SIZE,
+                top = footprint.top - 3 * Constants.TILE_SIZE,
+                right = footprint.right + 2 * Constants.TILE_SIZE,
+                bottom = footprint.bottom + 3 * Constants.TILE_SIZE
+            )
+            influenceRect.contains(pos)
+        }
+    }
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

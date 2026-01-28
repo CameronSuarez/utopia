@@ -38,28 +38,29 @@ object AgentSocialSystem {
             updatedFields.none { field -> field.participants.contains(agent.id) }
         }
 
-        // Only idle agents start new fields
-        val idleAgents = agentsNotInFields.filter { it.currentIntent == "Wandering" }
+        val candidates = agentsNotInFields.filter { 
+            it.currentIntent == "Wandering" || it.currentIntent == "seek_social" 
+        }
 
         val checkedAgents = mutableSetOf<String>()
 
-        for (agentA in idleAgents) {
+        for (agentA in candidates) {
             if (checkedAgents.contains(agentA.id)) continue
 
-            val nearbyIdleAgents = mutableListOf(agentA)
-            for (agentB in idleAgents) {
+            val nearbyAgents = mutableListOf(agentA)
+            for (agentB in candidates) {
                 if (agentA.id == agentB.id || checkedAgents.contains(agentB.id)) continue
 
                 val distance = agentA.position.toOffset().minus(agentB.position.toOffset()).getDistance()
                 if (distance < SOCIAL_FIELD_CREATION_DISTANCE) {
-                    nearbyIdleAgents.add(agentB)
+                    nearbyAgents.add(agentB)
                 }
             }
 
-            if (nearbyIdleAgents.size >= 2) {
-                val participants = nearbyIdleAgents.map { it.id }.toMutableList()
-                val centerX = nearbyIdleAgents.map { it.position.x }.average().toFloat()
-                val centerY = nearbyIdleAgents.map { it.position.y }.average().toFloat()
+            if (nearbyAgents.size >= 2) {
+                val participants = nearbyAgents.map { it.id }.toMutableList()
+                val centerX = nearbyAgents.map { it.position.x }.average().toFloat()
+                val centerY = nearbyAgents.map { it.position.y }.average().toFloat()
 
                 val newField = SocialField(
                     id = UUID.randomUUID().toString(),
@@ -73,6 +74,18 @@ object AgentSocialSystem {
             }
         }
 
-        return worldState.copy(socialFields = newFields)
+        // 3. Update Agent States based on field membership
+        val updatedAgents = agents.map { agent ->
+            val isInField = newFields.any { it.participants.contains(agent.id) }
+            if (isInField) {
+                agent.copy(state = com.example.utopia.data.models.AgentState.SOCIALIZING)
+            } else if (agent.state == com.example.utopia.data.models.AgentState.SOCIALIZING) {
+                agent.copy(state = com.example.utopia.data.models.AgentState.IDLE)
+            } else {
+                agent
+            }
+        }
+
+        return worldState.copy(socialFields = newFields, agents = updatedAgents)
     }
 }

@@ -44,6 +44,7 @@ data class AgentRuntime(
     @Transient val goalPos: Offset? = null,
     @Transient val noProgressMs: Long = 0L,
     @Transient val repathCooldownUntilMs: Long = 0L,
+    @Transient val intentStartTimeMs: Long = 0L,
     @Transient val state: AgentState = AgentState.IDLE
 ) {
     val x: Float get() = position.x

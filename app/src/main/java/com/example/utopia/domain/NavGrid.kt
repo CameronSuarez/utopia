@@ -363,13 +363,7 @@ class NavGrid(val width: Int = Constants.MAP_TILES_W, val height: Int = Constant
      * ANCHOR CONTRACT: Assumes the structure's (x, y) is its BOTTOM-LEFT corner.
      */
     private fun getStructureFootprint(structure: Structure): Rect {
-        val type = structure.type
-        // FIX: The structure's (x,y) is the BOTTOM-LEFT. 
-        // Compose Rect expects TOP-LEFT for its offset.
-        return Rect(
-            offset = Offset(structure.x, structure.y - type.worldHeight),
-            size = Size(type.worldWidth, type.worldHeight)
-        )
+        return structure.getWorldFootprint()
     }
 
     private fun getPropFootprint(prop: PropInstance): Rect {

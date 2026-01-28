@@ -45,6 +45,14 @@ private fun updateAgentTick(
     deltaTimeMs: Long,
     nowMs: Long
 ): AgentRuntime {
+    if (agent.state == AgentState.SOCIALIZING) {
+        return agent.copy(
+            velocity = SerializableOffset(0f, 0f),
+            animFrame = 0,
+            animTimerMs = 0
+        )
+    }
+
     val deltaSeconds = deltaTimeMs / 1000f
     
     // 1. CALCULATE FORCES (Time-independent)
@@ -183,9 +191,6 @@ private fun tryMove(
     }
 }
 
-private fun Offset.plus(other: Offset) = Offset(x + other.x, y + other.y)
-private fun Offset.times(scalar: Float) = Offset(x * scalar, y * scalar)
-private fun Offset.div(scalar: Float) = Offset(x / scalar, y / scalar)
 private fun Offset.clampMagnitude(max: Float): Offset {
     val mag = getDistance()
     return if (mag > max) this.div(mag).times(max) else this

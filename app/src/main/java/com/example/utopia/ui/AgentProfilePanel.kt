@@ -95,7 +95,6 @@ private fun BasicInfoSection(agent: AgentRuntime, portraitCache: PortraitCache) 
     val portrait = portraitCache.getPortrait(
         key = key,
         gender = agent.profile.gender,
-        // Removed: personality = agent.personality,
         facingLeft = false
     )
 
@@ -142,10 +141,6 @@ private fun PressuresSection(agent: AgentRuntime) {
     }
 }
 
-
-// REMOVED: SocialEntryRow
-// REMOVED: SocialEntryUi
-
 private fun fallbackAppearanceSpec(gender: Gender, seed: Int): AppearanceSpec {
     val safeSeed = abs(seed)
     val hairStylePool = if (gender == Gender.MALE) MALE_HAIR_STYLES else FEMALE_HAIR_STYLES
@@ -162,7 +157,3 @@ private fun fallbackAppearanceSpec(gender: Gender, seed: Int): AppearanceSpec {
         hasHood = (safeSeed % 10) == 0
     )
 }
-
-// REMOVED: relationshipTier
-// REMOVED: formatScore
-// REMOVED: getRelKey

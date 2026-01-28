@@ -33,6 +33,10 @@ object Constants {
     const val MAX_SPEED = 2.5f
     const val MAX_FORCE = 10.0f
 
+    // --- AI / Intent Constants ---
+    const val INTENT_COMMITMENT_MS = 8000L // 8 seconds of sticking to a task
+    const val MOMENTUM_BIAS = 0.15f        // Extra pressure added to current intent
+
     // UI & Interaction
     const val TOOLBAR_DRAG_SLOP = 25f
 
