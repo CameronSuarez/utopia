@@ -139,7 +139,7 @@ class WorldManager(private val navGrid: NavGrid) {
         val stateWithGossip = AgentGossipSystem.processGossip(stateWithFields)
         val updatedEmojiSignals = AgentEmojiSystem.updateEmojiSignals(stateWithGossip, nowMs)
         val stateWithSignals = stateWithGossip.copy(emojiSignals = updatedEmojiSignals)
-        val agentsWithRelationships = AgentRelationshipSystem.updateRelationships(stateWithSignals)
+        val agentsWithRelationships = AgentRelationshipSystem.updateRelationships(stateWithSignals, deltaTimeMs)
         val stateWithRelationships = stateWithSignals.copy(agents = agentsWithRelationships)
 
         // 4. Intent

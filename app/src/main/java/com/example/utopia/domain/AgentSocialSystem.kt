@@ -10,7 +10,7 @@ object AgentSocialSystem {
     private const val SOCIAL_FIELD_CREATION_DISTANCE = 50f // Max distance to start a social field
     private const val BASE_RADIUS = 30f
     private const val GROWTH_FACTOR = 10f
-    private const val ENERGY_DECAY_PER_SECOND = 0.1f
+    private const val ENERGY_DECAY_PER_SECOND = 10f // 100 energy / 10s = 10 per second
 
     fun updateSocialFields(worldState: WorldState, deltaSeconds: Float): WorldState {
         val newFields = mutableListOf<SocialField>()
@@ -76,9 +76,17 @@ object AgentSocialSystem {
 
         // 3. Update Agent States based on field membership
         val updatedAgents = agents.map { agent ->
-            val isInField = newFields.any { it.participants.contains(agent.id) }
-            if (isInField) {
-                agent.copy(state = com.example.utopia.data.models.AgentState.SOCIALIZING)
+            val activeField = newFields.find { it.participants.contains(agent.id) }
+            
+            if (activeField != null) {
+                // Face the center of the social field
+                val center = activeField.center.toOffset()
+                val shouldFaceLeft = agent.x > center.x
+                
+                agent.copy(
+                    state = com.example.utopia.data.models.AgentState.SOCIALIZING,
+                    facingLeft = shouldFaceLeft
+                )
             } else if (agent.state == com.example.utopia.data.models.AgentState.SOCIALIZING) {
                 agent.copy(state = com.example.utopia.data.models.AgentState.IDLE)
             } else {

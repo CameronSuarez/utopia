@@ -37,6 +37,7 @@ import kotlin.math.abs
 @Composable
 fun AgentProfilePanel(
     agent: AgentRuntime,
+    allAgents: List<AgentRuntime>,
     onClose: () -> Unit
 ) {
     val portraitCache = remember { PortraitCache(maxEntries = 128) }
@@ -67,8 +68,8 @@ fun AgentProfilePanel(
                 NeedsSection(agent = agent)
                 Spacer(modifier = Modifier.height(16.dp))
                 PressuresSection(agent = agent)
-                
-                // REMOVED: All social memory and relationship display logic.
+                Spacer(modifier = Modifier.height(16.dp))
+                RelationshipsSection(agent, allAgents)
             }
         }
     }
@@ -136,6 +137,46 @@ private fun PressuresSection(agent: AgentRuntime) {
         } else {
             agent.transientPressures.forEach { (key, value) ->
                 Text("$key: ${"%.2f".format(value)}", color = Color.LightGray)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RelationshipsSection(agent: AgentRuntime, allAgents: List<AgentRuntime>) {
+    Column {
+        Text("Relationships", color = Color.White, style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        val relationships = agent.socialMemory.affinity.filter { it.value != 0f }
+        
+        if (relationships.isEmpty()) {
+            Text("No known relationships", color = Color.Gray, fontSize = 14.sp)
+        } else {
+            relationships.forEach { (otherId, affinity) ->
+                val otherAgent = allAgents.find { it.id == otherId }
+                val name = otherAgent?.name ?: "Unknown ($otherId)"
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(name, color = Color.LightGray, modifier = Modifier.weight(1f))
+                    
+                    val affinityColor = when {
+                        affinity > 50 -> Color.Green
+                        affinity > 10 -> Color(0xFF90EE90)
+                        affinity < -50 -> Color.Red
+                        affinity < -10 -> Color(0xFFF08080)
+                        else -> Color.Gray
+                    }
+                    
+                    Text(
+                        text = "%.0f".format(affinity),
+                        color = affinityColor,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
         }
     }

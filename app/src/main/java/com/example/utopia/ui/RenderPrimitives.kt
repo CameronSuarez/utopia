@@ -180,13 +180,13 @@ fun structureHitBoundsWorld(structure: Structure): Rect {
  */
 fun agentHitBoundsWorld(agent: AgentRuntime): Rect {
     val tileSize = Constants.TILE_SIZE
-    val width = tileSize / 2f // Width reduced by 50%
-    val height = tileSize / 4f // 1/4 tile high (a thin strip at the feet)
+    val width = tileSize * 1.5f  // Increased width for easier clicking
+    val height = tileSize * 2.0f // Increased height to cover the agent's body
 
-    // Agent's world position (agent.x, agent.y) is assumed to be the bottom center of the sprite.
-    // The top-left corner is calculated to place the bottom of the box at agent.y, centered on agent.x
+    // Agent's world position (agent.x, agent.y) is assumed to be the center-ish of the base.
+    // We expand the box upwards to cover the whole agent.
     val left = agent.x - width / 2f
-    val top = agent.y - height
+    val top = agent.y - height * 0.8f // Shifted up to cover the sprite better
     val size = Size(width, height)
 
     return Rect(Offset(left, top), size)

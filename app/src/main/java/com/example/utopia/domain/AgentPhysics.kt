@@ -3,7 +3,9 @@ package com.example.utopia.domain
 import androidx.compose.ui.geometry.Offset
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.AgentState
+import com.example.utopia.data.models.PoiType
 import com.example.utopia.data.models.SerializableOffset
+import com.example.utopia.data.models.StructureType
 import com.example.utopia.data.models.TileType
 import com.example.utopia.data.models.WorldState
 import com.example.utopia.util.Constants
@@ -111,23 +113,45 @@ private fun calculateIntentForce(agent: AgentRuntime, worldState: WorldState): O
     val intent = agent.currentIntent
     if (intent == "Idle" || intent == "Wandering" || intent == "IDLE") return Offset.Zero
 
-    val targetType = when(intent) {
-        "seek_sleep", "seek_stability" -> com.example.utopia.data.models.PoiType.HOUSE
-        "seek_social" -> com.example.utopia.data.models.PoiType.PLAZA
-        "seek_fun" -> com.example.utopia.data.models.PoiType.TAVERN
-        "seek_stimulation" -> com.example.utopia.data.models.PoiType.STORE
-        else -> return Offset.Zero
+    val pos = agent.position.toOffset()
+
+    // 1. Check if we are already in a zone that satisfies this intent.
+    // This prevents agents from trying to "push" into the center of a building footprint.
+    val tile = worldState.getTileAtWorld(pos)
+    val structure = worldState.getInfluencingStructure(pos)
+    val onLot = tile == TileType.BUILDING_LOT || tile == TileType.PLAZA
+
+    val isCurrentlySatisfied = when (intent) {
+        "seek_sleep" -> onLot && structure?.type?.providesSleep == true
+        "seek_stability" -> onLot && structure?.type?.providesStability == true
+        "seek_fun" -> onLot && structure?.type?.providesFun == true
+        "seek_social" -> worldState.socialFields.any { it.participants.contains(agent.id) } || (onLot && (structure?.type == StructureType.PLAZA || structure?.type == StructureType.TAVERN))
+        "seek_stimulation" -> (onLot && structure?.type?.providesStimulation == true) || tile == TileType.ROAD
+        else -> false
     }
 
+    if (isCurrentlySatisfied) return Offset.Zero
+
+    // 2. Find the closest POI that can satisfy this intent.
+    // NOTE: For "seek_social", buildings act as attractors (meeting points) 
+    // but do NOT satisfy the need. Only SocialFields do.
     val targetPoi = worldState.pois
-        .filter { it.type == targetType }
-        .minByOrNull { it.pos.toOffset().minus(agent.position.toOffset()).getDistanceSquared() }
+        .filter { poi ->
+            when (intent) {
+                "seek_sleep" -> poi.type == PoiType.HOUSE || poi.type == PoiType.CASTLE
+                "seek_social" -> poi.type == PoiType.PLAZA || poi.type == PoiType.TAVERN
+                "seek_fun" -> poi.type == PoiType.TAVERN || poi.type == PoiType.PLAZA
+                "seek_stimulation" -> poi.type == PoiType.STORE || poi.type == PoiType.WORKSHOP || poi.type == PoiType.CASTLE
+                "seek_stability" -> poi.type == PoiType.STORE || poi.type == PoiType.WORKSHOP
+                else -> false
+            }
+        }
+        .minByOrNull { it.pos.toOffset().minus(pos).getDistanceSquared() }
         ?: return Offset.Zero
 
-    val toTarget = targetPoi.pos.toOffset().minus(agent.position.toOffset())
+    val toTarget = targetPoi.pos.toOffset().minus(pos)
     val dist = toTarget.getDistance()
-    
-    // Step 2: SCALE INTENT FORCE (Tiles/sec^2 -> Pixels/sec^2)
+
     return if (dist > 5f) {
         toTarget.div(dist).times(Constants.INTENT_FORCE * Constants.TILE_SIZE)
     } else {
@@ -176,17 +200,35 @@ private fun tryMove(
     return if (navGrid.isWalkable(targetGX, targetGY)) {
         SerializableOffset(targetX, targetY)
     } else {
+        // --- Obstacle Avoidance (Force field logic) ---
+        // If the direct path is blocked, we try to slide along the obstacle
+        val currentGX = (agent.x / Constants.TILE_SIZE).toInt()
+        val currentGY = (agent.y / Constants.TILE_SIZE).toInt()
+        
         val xOnlyGX = ((agent.x + dx) / Constants.TILE_SIZE).toInt()
         var finalX = agent.x
-        if (navGrid.isWalkable(xOnlyGX, agent.gridY)) {
+        if (navGrid.isWalkable(xOnlyGX, currentGY)) {
             finalX = targetX
         }
 
         val yOnlyGY = ((agent.y + dy) / Constants.TILE_SIZE).toInt()
         var finalY = agent.y
-        if (navGrid.isWalkable(agent.gridX, yOnlyGY)) {
+        if (navGrid.isWalkable(currentGX, yOnlyGY)) {
             finalY = targetY
         }
+        
+        // If still blocked on both axes (corner case), check if there's a nearby walkable tile to "bounce" towards
+        if (finalX == agent.x && finalY == agent.y) {
+            val nudge = Pathfinding.nudgeOutOfObstacle(targetGX, targetGY, navGrid)
+            if (nudge != null) {
+                val nudgeX = (nudge.first + 0.5f) * Constants.TILE_SIZE
+                val nudgeY = (nudge.second + 0.5f) * Constants.TILE_SIZE
+                val toNudge = Offset(nudgeX - agent.x, nudgeY - agent.y)
+                val step = toNudge.div(toNudge.getDistance()).times(2f) // Small step toward opening
+                return SerializableOffset(agent.x + step.x, agent.y + step.y)
+            }
+        }
+
         SerializableOffset(finalX, finalY)
     }
 }

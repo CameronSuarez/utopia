@@ -274,8 +274,7 @@ fun CityScreen(viewModel: GameViewModel) {
             ) {
                 AgentProfilePanel(
                     agent = selectedAgent,
-                    // Removed: allAgents = worldState.agents,
-                    // Removed: relationships = worldState.relationships,
+                    allAgents = worldState.agents,
                     onClose = { viewModel.clearSelection() }
                 )
             }

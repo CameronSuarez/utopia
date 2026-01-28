@@ -57,8 +57,8 @@ enum class StructureType(
 
     val providesSleep: Boolean get() = this == HOUSE || this == CASTLE
     val providesSocial: Boolean get() = this == PLAZA || this == TAVERN
-    val providesFun: Boolean get() = this == TAVERN || this == STORE
-    val providesStability: Boolean get() = this == HOUSE
+    val providesFun: Boolean get() = this == TAVERN || this == PLAZA
+    val providesStability: Boolean get() = this == STORE || this == WORKSHOP
     val providesStimulation: Boolean get() = this == STORE || this == WORKSHOP || this == CASTLE
 
     /** The physical width of the structure's footprint in world units. Used for collision and NavGrid baking. */
