@@ -242,6 +242,20 @@ fun CityScreen(viewModel: GameViewModel) {
         // REMOVED: Environmental Effects Layer (Atmospheric Tints)
 
         // HUD Layer (Stats, Tools, Overlays)
+        val brightness = when (viewModel.currentPhaseName) {
+            "Morning", "Evening" -> 0.9f
+            "Afternoon" -> 1.0f
+            "Night" -> 0.7f
+            else -> 1.0f
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(5f)
+                .background(Color.Black.copy(alpha = 1f - brightness))
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()

@@ -178,14 +178,49 @@ private fun NeedBar(label: String, value: Float) {
 
 @Composable
 private fun PressuresSection(agent: AgentRuntime) {
+    val pressureLabels = mapOf(
+        "seek_sleep" to "Sleep",
+        "seek_fun" to "Fun",
+        "seek_stability" to "Stability",
+        "seek_stimulation" to "Stimulation"
+    )
+
     Column {
-        Text("Pressures", color = Color.White, style = MaterialTheme.typography.titleMedium)
+        Text("Pressures (AI Logic)", color = Color.White, style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
+        
         if (agent.transientPressures.isEmpty()) {
-            Text("None", color = Color.Gray)
+            Text("No active pressures", color = Color.Gray, fontSize = 14.sp)
         } else {
-            agent.transientPressures.forEach { (key, value) ->
-                Text("$key: ${"%.2f".format(value)}", color = Color.LightGray)
+            // Sort by strength so the "Winner" is on top
+            val sortedPressures = agent.transientPressures.toList().sortedByDescending { it.second }
+            
+            sortedPressures.forEach { (key, value) ->
+                val label = pressureLabels[key] ?: key
+                val isWinner = key == agent.currentIntent
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = label,
+                        color = if (isWinner) Color.Cyan else Color.LightGray,
+                        modifier = Modifier.weight(1f),
+                        fontSize = 14.sp
+                    )
+                    
+                    Text(
+                        text = "%.2f".format(value),
+                        color = if (isWinner) Color.Cyan else Color.Gray,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    
+                    if (isWinner) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("★", color = Color.Cyan, fontSize = 12.sp)
+                    }
+                }
             }
         }
     }
@@ -231,7 +266,7 @@ private fun RelationshipsSection(agent: AgentRuntime, allAgents: List<AgentRunti
     }
 }
 
-private fun fallbackAppearanceSpec(gender: Gender, seed: Int): AppearanceSpec {
+internal fun fallbackAppearanceSpec(gender: Gender, seed: Int): AppearanceSpec {
     val safeSeed = abs(seed)
     val hairStylePool = if (gender == Gender.MALE) MALE_HAIR_STYLES else FEMALE_HAIR_STYLES
     val widthT = (safeSeed % 100) / 100f

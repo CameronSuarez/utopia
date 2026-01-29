@@ -136,7 +136,7 @@ class WorldManager(private val navGrid: NavGrid) {
         val stateWithFields = AgentSocialSystem.updateSocialFields(stateWithNeeds, deltaSeconds)
 
         // 3. Gossip / Emojis / Relationships
-        val stateWithGossip = AgentGossipSystem.processGossip(stateWithFields)
+        val stateWithGossip = AgentGossipSystem.processGossip(stateWithFields, nowMs)
         val updatedEmojiSignals = AgentEmojiSystem.updateEmojiSignals(stateWithGossip, nowMs)
         val stateWithSignals = stateWithGossip.copy(emojiSignals = updatedEmojiSignals)
         val agentsWithRelationships = AgentRelationshipSystem.updateRelationships(stateWithSignals, deltaTimeMs)
@@ -462,8 +462,13 @@ class WorldManager(private val navGrid: NavGrid) {
             spawnAgentWithExplicitName(house, jx, jy, name, gender)
         }
 
-        firstVillagerName?.let {
-            house.customName = "${it}'s House"
+        firstVillagerName?.let { name ->
+            val currentState = _worldState.value
+            _worldState.value = currentState.copy(
+                structures = currentState.structures.map { s ->
+                    if (s.id == house.id) s.copy(customName = "$name's House") else s
+                }
+            )
         }
     }
 
@@ -623,6 +628,8 @@ class WorldManager(private val navGrid: NavGrid) {
         for (ix in minX..maxX) {
             for (iy in minY..maxY) {
                 if (ix in 0 until Constants.MAP_TILES_W && iy in 0 until Constants.MAP_TILES_H) {
+                    // Check if we are placing a road over a lot. 
+                    // ROAD placement is allowed but it takes precedence over BUILDING_LOT.
                     tiles[ix][iy] = tileType
                 }
             }
@@ -634,7 +641,8 @@ class WorldManager(private val navGrid: NavGrid) {
             for (iy in minY..maxY) {
                 if (ix in 0 until Constants.MAP_TILES_W && iy in 0 until Constants.MAP_TILES_H) {
                     val current = tiles[ix][iy]
-                    if (current != TileType.ROAD && current != TileType.WALL && current != TileType.PROP_BLOCKED) {
+                    // Do not overwrite permanent infrastructure (Roads/Walls) with Lot status.
+                    if (current != TileType.ROAD && current != TileType.WALL && current != TileType.PROP_BLOCKED && current != TileType.BUILDING_SOLID) {
                         tiles[ix][iy] = TileType.BUILDING_LOT
                     }
                 }

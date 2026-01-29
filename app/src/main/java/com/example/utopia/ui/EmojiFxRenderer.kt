@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
 import com.example.utopia.data.models.AgentRuntime
+import com.example.utopia.data.models.AppearanceVariant
 import com.example.utopia.data.models.WorldState
 
 data class EmojiFxAssets(
@@ -31,6 +32,7 @@ fun DrawScope.drawAgentEmojiFxItem(
     assets: EmojiFxAssets,
     timeMs: Long
 ) {
+    val portraitCache = PortraitCache(maxEntries = 1) // Temporary cache for this call
     val screenPos = worldToScreen(Offset(agent.x, agent.y), camera)
     val scale = 2.2f * camera.zoom
     val cullPadX = 40f * scale
@@ -63,16 +65,43 @@ fun DrawScope.drawAgentEmojiFxItem(
             }
             drawPath(path, Color.White)
 
-            assets.emojiPaint.textSize = 22f * camera.zoom
-            assets.emojiPaint.textAlign = android.graphics.Paint.Align.CENTER
-            
-            // Center emoji in bubble
-            drawContext.canvas.nativeCanvas.drawText(
-                signal.emojiType,
-                signalPos.x,
-                signalPos.y - bubbleSize * 0.25f,
-                assets.emojiPaint
-            )
+            if (signal.emojiType == "GOSSIP" && signal.targetAgentId != null) {
+                // RENDER PORTRAIT FOR GOSSIP
+                val targetAgent = worldState.agents.find { it.id == signal.targetAgentId }
+                if (targetAgent != null) {
+                    val spec = targetAgent.profile.appearance ?: fallbackAppearanceSpec(targetAgent.profile.gender, targetAgent.shortId)
+                    val portrait = portraitCache.getPortrait(
+                        key = PortraitKey(spec, AppearanceVariant.DEFAULT, sizePx = 64),
+                        gender = targetAgent.profile.gender,
+                        facingLeft = false
+                    )
+                    
+                    val imagePadding = 4f * camera.zoom
+                    drawImage(
+                        image = portrait,
+                        dstOffset = androidx.compose.ui.unit.IntOffset(
+                            (signalPos.x - bubbleSize / 2f + imagePadding).toInt(),
+                            (signalPos.y - bubbleSize + imagePadding).toInt()
+                        ),
+                        dstSize = androidx.compose.ui.unit.IntSize(
+                            (bubbleSize - imagePadding * 2).toInt(),
+                            (bubbleSize - imagePadding * 2).toInt()
+                        )
+                    )
+                }
+            } else {
+                // RENDER EMOJI
+                assets.emojiPaint.textSize = 22f * camera.zoom
+                assets.emojiPaint.textAlign = android.graphics.Paint.Align.CENTER
+                
+                // Center emoji in bubble
+                drawContext.canvas.nativeCanvas.drawText(
+                    signal.emojiType,
+                    signalPos.x,
+                    signalPos.y - bubbleSize * 0.25f,
+                    assets.emojiPaint
+                )
+            }
         }
     }
     

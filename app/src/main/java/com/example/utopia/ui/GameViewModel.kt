@@ -86,7 +86,8 @@ class GameViewModel : ViewModel() {
             var timeMs = 0L
 
             // Local time state to replace WorldState.timeOfDay
-            var localTimeOfDay = 0f
+            // Game starts in Morning (Phase 1). Morning starts at phaseDurationSec.
+            var localTimeOfDay = 120f
             val totalCycleSec = 480f // Replaced Constants.PHASE_DURATION_SEC * 4
             val phaseDurationSec = 120f // Replaced Constants.PHASE_DURATION_SEC 
 

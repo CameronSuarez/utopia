@@ -38,19 +38,19 @@ object AgentNeedsSystem {
         val tile = worldState.getTileAtWorld(pos)
         val structure = worldState.getInfluencingStructure(pos)
 
-        val onLot = tile == TileType.BUILDING_LOT
         val onRoad = tile == TileType.ROAD
-        val onPlaza = tile == TileType.PLAZA
+        val hasInfluencingStructure = structure != null
 
         // Fulfillments based on presence (Semantic Tiles and Structures)
-        val fulfillsSleep = onLot && structure?.type?.providesSleep == true
+        // We use hasInfluencingStructure instead of tile type because roads can be built over lots.
+        val fulfillsSleep = hasInfluencingStructure && structure?.type?.providesSleep == true
         // Social is fulfilled ONLY by being in a SocialField (interaction with other agents)
         val isInSocialField = worldState.socialFields.any { it.participants.contains(agent.id) }
         val fulfillsSocial = isInSocialField
 
-        val fulfillsFun = onLot && structure?.type?.providesFun == true
-        val fulfillsStability = onLot && structure?.type?.providesStability == true
-        val fulfillsStimulation = (onLot && structure?.type?.providesStimulation == true) || onRoad
+        val fulfillsFun = hasInfluencingStructure && structure?.type?.providesFun == true
+        val fulfillsStability = hasInfluencingStructure && structure?.type?.providesStability == true
+        val fulfillsStimulation = (hasInfluencingStructure && structure?.type?.providesStimulation == true) || onRoad
 
         val updatedNeeds = needs.copy(
             sleep = calculateNeed(needs.sleep, fulfillsSleep, SLEEP_GAIN_PER_DAY, SLEEP_DECAY_PER_DAY, decayFactor),

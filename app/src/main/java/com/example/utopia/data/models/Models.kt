@@ -87,7 +87,7 @@ data class Structure(
     val x: Float,
     val y: Float,
     val residents: List<String> = emptyList(),
-    var customName: String? = null
+    val customName: String? = null
 ) {
     fun getWorldFootprint(): Rect {
         return Rect(
@@ -102,7 +102,7 @@ enum class Gender { MALE, FEMALE }
 @Serializable
 data class AppearanceSpec(val skinToneId: Int, val hairColorId: Int, val tunicColorId: Int, val hairStyleId: Int, val bodyWidthMod: Float, val bodyHeightMod: Float, val hasBeard: Boolean, val hasHood: Boolean)
 @Serializable
-data class AgentProfile(val gender: Gender = Gender.MALE, var appearance: AppearanceSpec? = null)
+data class AgentProfile(val gender: Gender = Gender.MALE, val appearance: AppearanceSpec? = null)
 
 // Simplified appearance variants (unused workers variants removed)
 @Serializable
@@ -122,23 +122,23 @@ data class SerializableOffset(val x: Float, val y: Float) {
 
 @Serializable
 data class PersonalityVector(
-    var expressiveness: Float, // [-1, 1]
-    var positivity: Float,     // [-1, 1]
-    var playfulness: Float,    // [-1, 1]
-    var warmth: Float,         // [-1, 1]
-    var sensitivity: Float     // [-1, 1]
+    val expressiveness: Float, // [-1, 1]
+    val positivity: Float,     // [-1, 1]
+    val playfulness: Float,    // [-1, 1]
+    val warmth: Float,         // [-1, 1]
+    val sensitivity: Float     // [-1, 1]
 )
 
 @Serializable
 data class Needs(
     // Homeostatic
-    var sleep: Float,       // [0, 100]
-    var stability: Float,   // [0, 100]
-    var social: Float,      // [0, 100]
-    var `fun`: Float,         // [0, 100]
+    val sleep: Float,       // [0, 100]
+    val stability: Float,   // [0, 100]
+    val social: Float,      // [0, 100]
+    val `fun`: Float,         // [0, 100]
 
     // Destabilizing
-    var stimulation: Float  // [0, 100]
+    val stimulation: Float  // [0, 100]
 )
 
 @Serializable
@@ -150,9 +150,9 @@ data class SocialMemory(
 data class SocialField(
     val id: String,
     val center: SerializableOffset,
-    var radius: Float,
-    var energy: Float,
-    val participants: MutableList<String>
+    val radius: Float,
+    val energy: Float,
+    val participants: List<String>
 )
 
 
@@ -160,6 +160,7 @@ data class SocialField(
 data class EmojiSignal(
     val senderId: String,
     val emojiType: String, // e.g. "HAPPY", "ANGRY", "WAVE"
+    val targetAgentId: String? = null, // Used for gossip to show a portrait
     val position: SerializableOffset,
     val timestamp: Long,
     val lifeTime: Int = 2 // Ticks it lasts for visibility/processing
