@@ -27,10 +27,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.UiComposable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.example.utopia.data.models.AgentIntent
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.AppearanceSpec
 import com.example.utopia.data.models.AppearanceVariant
@@ -59,25 +61,43 @@ fun AgentProfilePanel(
                 .fillMaxHeight()
                 .width(panelWidth)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(scrollState)
-                    .padding(16.dp)
-            ) {
-                HeaderRow(onClose = onClose)
-                Spacer(modifier = Modifier.height(12.dp))
-                BasicInfoSection(agent, portraitCache)
-                Spacer(modifier = Modifier.height(16.dp))
-                NeedsSection(agent = agent)
-                Spacer(modifier = Modifier.height(16.dp))
-                PressuresSection(agent = agent)
-                Spacer(modifier = Modifier.height(16.dp))
-                RelationshipsSection(agent, allAgents)
-            }
+            UIContent(agent, allAgents, portraitCache, scrollState, onClose)
         }
     }
 }
+
+@Composable
+private fun UIContent(
+    agent: AgentRuntime,
+    allAgents: List<AgentRuntime>,
+    portraitCache: PortraitCache,
+    scrollState: androidx.compose.foundation.ScrollState,
+    onClose: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(scrollState)
+            .padding(16.dp)
+    ) {
+        HeaderRow(onClose = onClose)
+        UISpacer(12)
+        BasicInfoSection(agent, portraitCache)
+        UISpacer(16)
+        NeedsSection(agent = agent)
+        UISpacer(16)
+        PressuresSection(agent = agent)
+        UISpacer(16)
+        RelationshipsSection(agent, allAgents, portraitCache)
+    }
+}
+
+@UiComposable
+@Composable
+private fun UISpacer(height: Int) {
+    Spacer(modifier = Modifier.height(height.dp))
+}
+
 
 @Composable
 private fun HeaderRow(onClose: () -> Unit) {
@@ -178,27 +198,26 @@ private fun NeedBar(label: String, value: Float) {
 
 @Composable
 private fun PressuresSection(agent: AgentRuntime) {
-    val pressureLabels = mapOf(
-        "seek_sleep" to "Sleep",
-        "seek_fun" to "Fun",
-        "seek_stability" to "Stability",
-        "seek_stimulation" to "Stimulation"
-    )
-
     Column {
         Text("Pressures (AI Logic)", color = Color.White, style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
-        
+
         if (agent.transientPressures.isEmpty()) {
             Text("No active pressures", color = Color.Gray, fontSize = 14.sp)
         } else {
             // Sort by strength so the "Winner" is on top
             val sortedPressures = agent.transientPressures.toList().sortedByDescending { it.second }
-            
+
             sortedPressures.forEach { (key, value) ->
-                val label = pressureLabels[key] ?: key
+                val label = when(key) {
+                    AgentIntent.SeekSleep -> "Sleep"
+                    AgentIntent.SeekFun -> "Fun"
+                    AgentIntent.SeekStability -> "Stability"
+                    AgentIntent.SeekStimulation -> "Stimulation"
+                    else -> key.toString()
+                }
                 val isWinner = key == agent.currentIntent
-                
+
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -209,13 +228,13 @@ private fun PressuresSection(agent: AgentRuntime) {
                         modifier = Modifier.weight(1f),
                         fontSize = 14.sp
                     )
-                    
+
                     Text(
                         text = "%.2f".format(value),
                         color = if (isWinner) Color.Cyan else Color.Gray,
                         style = MaterialTheme.typography.bodySmall
                     )
-                    
+
                     if (isWinner) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("★", color = Color.Cyan, fontSize = 12.sp)
@@ -227,42 +246,103 @@ private fun PressuresSection(agent: AgentRuntime) {
 }
 
 @Composable
-private fun RelationshipsSection(agent: AgentRuntime, allAgents: List<AgentRuntime>) {
+private fun RelationshipsSection(
+    agent: AgentRuntime,
+    allAgents: List<AgentRuntime>,
+    portraitCache: PortraitCache
+) {
     Column {
         Text("Relationships", color = Color.White, style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
-        
+
         val relationships = agent.socialMemory.affinity.filter { it.value != 0f }
-        
+
         if (relationships.isEmpty()) {
             Text("No known relationships", color = Color.Gray, fontSize = 14.sp)
         } else {
             relationships.forEach { (otherId, affinity) ->
                 val otherAgent = allAgents.find { it.id == otherId }
                 val name = otherAgent?.name ?: "Unknown ($otherId)"
-                
+
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(name, color = Color.LightGray, modifier = Modifier.weight(1f))
-                    
-                    val affinityColor = when {
-                        affinity > 50 -> Color.Green
-                        affinity > 10 -> Color(0xFF90EE90)
-                        affinity < -50 -> Color.Red
-                        affinity < -10 -> Color(0xFFF08080)
-                        else -> Color.Gray
+                    // Profile Picture
+                    if (otherAgent != null) {
+                        val spec = otherAgent.profile.appearance ?: fallbackAppearanceSpec(otherAgent.profile.gender, otherAgent.shortId)
+                        val key = PortraitKey(spec, AppearanceVariant.DEFAULT, sizePx = 64)
+                        val portrait = portraitCache.getPortrait(
+                            key = key,
+                            gender = otherAgent.profile.gender,
+                            facingLeft = false
+                        )
+                        Image(
+                            bitmap = portrait,
+                            contentDescription = null,
+                            modifier = Modifier.size(44.dp)
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(Color(0xFF2D2D2D), shape = RoundedCornerShape(4.dp))
+                        )
                     }
-                    
-                    Text(
-                        text = "%.0f".format(affinity),
-                        color = affinityColor,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            Text(name, color = Color.White, fontSize = 14.sp)
+                            Text(
+                                text = "%.0f".format(affinity),
+                                color = Color.LightGray,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        AffinityBar(affinity)
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AffinityBar(affinity: Float) {
+    // Affinity range -100 to 100 -> progress 0.0 to 1.0
+    val progress = ((affinity + 100f) / 200f).coerceIn(0f, 1f)
+    
+    // Interpolate Red -> Yellow -> Green
+    val color = when {
+        progress < 0.5f -> {
+            val t = progress * 2f
+            Color(red = 1f, green = t, blue = 0f)
+        }
+        else -> {
+            val t = (progress - 0.5f) * 2f
+            Color(red = 1f - t, green = 1f, blue = 0f)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(6.dp)
+            .background(Color(0xFF2D2D2D), shape = RoundedCornerShape(3.dp))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(progress)
+                .fillMaxHeight()
+                .background(color, shape = RoundedCornerShape(3.dp))
+        )
     }
 }
 

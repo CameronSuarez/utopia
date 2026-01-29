@@ -18,7 +18,7 @@ data class AgentRuntime(
     val velocity: SerializableOffset,
 
     // Intent & Goals
-    val currentIntent: String, // Example: "Wandering", "SeekingSocial", "Working"
+    val currentIntent: AgentIntent, // Example: "Wandering", "SeekingSocial", "Working"
 
     // Intrinsic Traits
     val personality: PersonalityVector,
@@ -29,7 +29,7 @@ data class AgentRuntime(
 
     // Situation-dependent State
     @Transient
-    val transientPressures: Map<String, Float> = emptyMap(),
+    val transientPressures: Map<AgentIntent, Float> = emptyMap(),
 
     // Physical/Visual Helpers (Non-authoritative, but kept in state for continuity)
     @Transient val lastPosX: Float = 0f,

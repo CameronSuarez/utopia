@@ -33,7 +33,7 @@ private fun AgentLabel(
     val screenY = agent.y + cameraOffset.y - Constants.TILE_SIZE * 0.6f
 
     val stallSeconds = agent.noProgressMs / 1000f
-    val label = "${agent.state} (${stallSeconds.format(1)}s)"
+    val label = "${agent.state} | ${agent.currentIntent} (${stallSeconds.format(1)}s)"
 
     Text(
         text = label,

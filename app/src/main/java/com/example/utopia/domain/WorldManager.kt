@@ -505,7 +505,7 @@ class WorldManager(private val navGrid: NavGrid) {
             profile = agentProfile,
             position = SerializableOffset(finalWx, finalWy),
             velocity = SerializableOffset(0f, 0f),
-            currentIntent = "IDLE",
+            currentIntent = AgentIntent.Idle,
             personality = PersonalityVector(
                 expressiveness = random.nextFloat() * 2 - 1,
                 positivity = random.nextFloat() * 2 - 1,

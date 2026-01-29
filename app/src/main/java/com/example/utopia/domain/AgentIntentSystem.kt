@@ -1,5 +1,6 @@
 package com.example.utopia.domain
 
+import com.example.utopia.data.models.AgentIntent
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.util.Constants
 
@@ -21,33 +22,33 @@ object AgentIntentSystem {
      * @param agent The agent to evaluate.
      * @return A map of pressure names to their strength [0, 1].
      */
-    fun calculatePressures(agent: AgentRuntime): Map<String, Float> {
-        val pressures = mutableMapOf<String, Float>()
+    fun calculatePressures(agent: AgentRuntime): Map<AgentIntent, Float> {
+        val pressures = mutableMapOf<AgentIntent, Float>()
         val needs = agent.needs
 
         // --- Homeostatic Pressures (Desire to return to a baseline) ---
 
         // Pressure to sleep is only active when need is critically low (< 10%).
-        pressures["seek_sleep"] = if (needs.sleep < 10f) 1.0f - (needs.sleep / 100f) else 0f
+        pressures[AgentIntent.SeekSleep] = if (needs.sleep < 10f) 1.0f - (needs.sleep / 100f) else 0f
 
         // REMOVED: Social is no longer a driven intent.
         // pressures["seek_social"] = 1.0f - (needs.social / 100f)
 
         // Pressure for fun is highest when need is lowest.
-        pressures["seek_fun"] = 1.0f - (needs.`fun` / 100f)
+        pressures[AgentIntent.SeekFun] = 1.0f - (needs.`fun` / 100f)
         
         // Pressure for stability (e.g., go home) is highest when need is lowest.
-        pressures["seek_stability"] = 1.0f - (needs.stability / 100f)
+        pressures[AgentIntent.SeekStability] = 1.0f - (needs.stability / 100f)
 
         // --- Destabilizing Pressures (Desire for novelty) ---
 
         // Pressure for stimulation grows as the need increases.
-        pressures["seek_stimulation"] = needs.stimulation / 100f
+        pressures[AgentIntent.SeekStimulation] = needs.stimulation / 100f
 
         // --- Momentum Bias (Fix C) ---
         // Boost the current intent slightly so agents don't flip-flop between two close needs.
         val current = agent.currentIntent
-        if (current != "Idle" && current != "Wandering" && current != "IDLE") {
+        if (current !is AgentIntent.Idle && current !is AgentIntent.Wandering) {
             pressures[current] = (pressures[current] ?: 0f) + Constants.MOMENTUM_BIAS
         }
 
@@ -62,7 +63,7 @@ object AgentIntentSystem {
      * @param nowMs The current world time in milliseconds.
      * @return The name of the selected intent (e.g., "seek_sleep").
      */
-    fun selectIntent(agent: AgentRuntime, nowMs: Long): String {
+    fun selectIntent(agent: AgentRuntime, nowMs: Long): AgentIntent {
         // --- Action Commitment Window (Fix A) ---
         // If we recently started an intent, stick to it unless it's gone completely.
         val timeSinceStart = nowMs - agent.intentStartTimeMs
@@ -71,7 +72,7 @@ object AgentIntentSystem {
         val pressures = agent.transientPressures
         val currentIntent = agent.currentIntent
 
-        if (isLocked && currentIntent != "Idle" && currentIntent != "Wandering" && currentIntent != "IDLE") {
+        if (isLocked && currentIntent !is AgentIntent.Idle && currentIntent !is AgentIntent.Wandering) {
             // Only stick to it if it still has *some* pressure (hasn't been fully satisfied)
             if ((pressures[currentIntent] ?: 0f) > 0.1f) {
                 return currentIntent
@@ -79,12 +80,12 @@ object AgentIntentSystem {
         }
 
         if (pressures.isEmpty()) {
-            return "Idle"
+            return AgentIntent.Idle
         }
 
         // Find the pressure with the highest value
         val strongestPressure = pressures.maxByOrNull { it.value }
 
-        return strongestPressure?.key ?: "Wandering"
+        return strongestPressure?.key ?: AgentIntent.Wandering
     }
 }

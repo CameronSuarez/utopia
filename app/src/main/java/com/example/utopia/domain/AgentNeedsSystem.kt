@@ -3,8 +3,6 @@ package com.example.utopia.domain
 import com.example.utopia.data.models.TileType
 import com.example.utopia.data.models.WorldState
 import com.example.utopia.data.models.AgentRuntime
-import kotlin.math.max
-import kotlin.math.min
 
 /**
  * Handles the decay and fulfillment of agent needs based on their location in the world.
@@ -43,14 +41,13 @@ object AgentNeedsSystem {
 
         // Fulfillments based on presence (Semantic Tiles and Structures)
         // We use hasInfluencingStructure instead of tile type because roads can be built over lots.
-        val fulfillsSleep = hasInfluencingStructure && structure?.type?.providesSleep == true
+        val fulfillsSleep = hasInfluencingStructure && structure.type.providesSleep
         // Social is fulfilled ONLY by being in a SocialField (interaction with other agents)
-        val isInSocialField = worldState.socialFields.any { it.participants.contains(agent.id) }
-        val fulfillsSocial = isInSocialField
+        val fulfillsSocial = worldState.socialFields.any { it.participants.contains(agent.id) }
 
-        val fulfillsFun = hasInfluencingStructure && structure?.type?.providesFun == true
-        val fulfillsStability = hasInfluencingStructure && structure?.type?.providesStability == true
-        val fulfillsStimulation = (hasInfluencingStructure && structure?.type?.providesStimulation == true) || onRoad
+        val fulfillsFun = hasInfluencingStructure && structure.type.providesFun
+        val fulfillsStability = hasInfluencingStructure && structure.type.providesStability
+        val fulfillsStimulation = (hasInfluencingStructure && structure.type.providesStimulation) || onRoad
 
         val updatedNeeds = needs.copy(
             sleep = calculateNeed(needs.sleep, fulfillsSleep, SLEEP_GAIN_PER_DAY, SLEEP_DECAY_PER_DAY, decayFactor),

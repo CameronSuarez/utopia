@@ -1,6 +1,7 @@
 package com.example.utopia.domain
 
 import androidx.compose.ui.geometry.Offset
+import com.example.utopia.data.models.AgentIntent
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.AgentState
 import com.example.utopia.data.models.PoiType
@@ -111,7 +112,7 @@ private fun updateAgentTick(
 
 private fun calculateIntentForce(agent: AgentRuntime, worldState: WorldState): Offset {
     val intent = agent.currentIntent
-    if (intent == "Idle" || intent == "Wandering" || intent == "IDLE") return Offset.Zero
+    if (intent is AgentIntent.Idle || intent is AgentIntent.Wandering) return Offset.Zero
 
     val pos = agent.position.toOffset()
 
@@ -122,27 +123,23 @@ private fun calculateIntentForce(agent: AgentRuntime, worldState: WorldState): O
     val onLot = tile == TileType.BUILDING_LOT || tile == TileType.PLAZA
 
     val isCurrentlySatisfied = when (intent) {
-        "seek_sleep" -> onLot && structure?.type?.providesSleep == true
-        "seek_stability" -> onLot && structure?.type?.providesStability == true
-        "seek_fun" -> onLot && structure?.type?.providesFun == true
-        "seek_social" -> worldState.socialFields.any { it.participants.contains(agent.id) } || (onLot && (structure?.type == StructureType.PLAZA || structure?.type == StructureType.TAVERN))
-        "seek_stimulation" -> (onLot && structure?.type?.providesStimulation == true) || tile == TileType.ROAD
+        AgentIntent.SeekSleep -> onLot && structure?.type?.providesSleep == true
+        AgentIntent.SeekStability -> onLot && structure?.type?.providesStability == true
+        AgentIntent.SeekFun -> onLot && structure?.type?.providesFun == true
+        AgentIntent.SeekStimulation -> (onLot && structure?.type?.providesStimulation == true) || tile == TileType.ROAD
         else -> false
     }
 
     if (isCurrentlySatisfied) return Offset.Zero
 
     // 2. Find the closest POI that can satisfy this intent.
-    // NOTE: For "seek_social", buildings act as attractors (meeting points) 
-    // but do NOT satisfy the need. Only SocialFields do.
     val targetPoi = worldState.pois
         .filter { poi ->
             when (intent) {
-                "seek_sleep" -> poi.type == PoiType.HOUSE || poi.type == PoiType.CASTLE
-                "seek_social" -> poi.type == PoiType.PLAZA || poi.type == PoiType.TAVERN
-                "seek_fun" -> poi.type == PoiType.TAVERN || poi.type == PoiType.PLAZA
-                "seek_stimulation" -> poi.type == PoiType.STORE || poi.type == PoiType.WORKSHOP || poi.type == PoiType.CASTLE
-                "seek_stability" -> poi.type == PoiType.STORE || poi.type == PoiType.WORKSHOP
+                AgentIntent.SeekSleep -> poi.type == PoiType.HOUSE || poi.type == PoiType.CASTLE
+                AgentIntent.SeekFun -> poi.type == PoiType.TAVERN || poi.type == PoiType.PLAZA
+                AgentIntent.SeekStimulation -> poi.type == PoiType.STORE || poi.type == PoiType.WORKSHOP || poi.type == PoiType.CASTLE
+                AgentIntent.SeekStability -> poi.type == PoiType.STORE || poi.type == PoiType.WORKSHOP
                 else -> false
             }
         }
