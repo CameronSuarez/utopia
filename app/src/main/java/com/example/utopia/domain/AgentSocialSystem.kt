@@ -38,17 +38,22 @@ object AgentSocialSystem {
             updatedFields.none { field -> field.participants.contains(agent.id) }
         }
 
-        val candidates = agentsNotInFields.filter { 
-            it.currentIntent == "Wandering" || it.currentIntent == "seek_social" 
+        // Agents can initiate socialization if their social need is < 75%
+        // and they aren't sleeping.
+        val potentialSocializers = agentsNotInFields.filter { 
+            it.state != com.example.utopia.data.models.AgentState.SLEEPING 
         }
 
         val checkedAgents = mutableSetOf<String>()
 
-        for (agentA in candidates) {
+        for (agentA in potentialSocializers) {
             if (checkedAgents.contains(agentA.id)) continue
+            
+            // Initiation threshold: only start a field if actually lonely (< 75%)
+            if (agentA.needs.social >= 75f) continue
 
             val nearbyAgents = mutableListOf(agentA)
-            for (agentB in candidates) {
+            for (agentB in potentialSocializers) {
                 if (agentA.id == agentB.id || checkedAgents.contains(agentB.id)) continue
 
                 val distance = agentA.position.toOffset().minus(agentB.position.toOffset()).getDistance()

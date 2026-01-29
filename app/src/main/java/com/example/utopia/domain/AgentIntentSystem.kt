@@ -27,11 +27,11 @@ object AgentIntentSystem {
 
         // --- Homeostatic Pressures (Desire to return to a baseline) ---
 
-        // Pressure to sleep is highest when need is lowest.
-        pressures["seek_sleep"] = 1.0f - (needs.sleep / 100f)
+        // Pressure to sleep is only active when need is critically low (< 10%).
+        pressures["seek_sleep"] = if (needs.sleep < 10f) 1.0f - (needs.sleep / 100f) else 0f
 
-        // Pressure for social activity is highest when need is lowest.
-        pressures["seek_social"] = 1.0f - (needs.social / 100f)
+        // REMOVED: Social is no longer a driven intent.
+        // pressures["seek_social"] = 1.0f - (needs.social / 100f)
 
         // Pressure for fun is highest when need is lowest.
         pressures["seek_fun"] = 1.0f - (needs.`fun` / 100f)

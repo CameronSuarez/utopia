@@ -1,6 +1,9 @@
 package com.example.utopia.ui
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,6 +36,7 @@ import com.example.utopia.data.models.AppearanceSpec
 import com.example.utopia.data.models.AppearanceVariant
 import com.example.utopia.data.models.Gender
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 @Composable
 fun AgentProfilePanel(
@@ -119,11 +123,56 @@ private fun NeedsSection(agent: AgentRuntime) {
     Column {
         Text("Needs", color = Color.White, style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
-        Text("Sleep: ${"%.2f".format(agent.needs.sleep)}", color = Color.LightGray)
-        Text("Stability: ${"%.2f".format(agent.needs.stability)}", color = Color.LightGray)
-        Text("Social: ${"%.2f".format(agent.needs.social)}", color = Color.LightGray)
-        Text("Fun: ${"%.2f".format(agent.needs.`fun`)}", color = Color.LightGray)
-        Text("Stimulation: ${"%.2f".format(agent.needs.stimulation)}", color = Color.LightGray)
+        NeedBar("Sleep", agent.needs.sleep)
+        NeedBar("Stability", agent.needs.stability)
+        NeedBar("Social", agent.needs.social)
+        NeedBar("Fun", agent.needs.`fun`)
+        // For stimulation, 0 means "Stimulated" and 100 means "Bored".
+        // We invert it so the bar shows "Engagement" (Full = Good).
+        NeedBar("Stimulation", 100f - agent.needs.stimulation)
+    }
+}
+
+@Composable
+private fun NeedBar(label: String, value: Float) {
+    val progress = (value / 100f).coerceIn(0f, 1f)
+    // Interpolate Red -> Yellow -> Green
+    // 0.0 = Red (1, 0, 0)
+    // 0.5 = Yellow (1, 1, 0)
+    // 1.0 = Green (0, 1, 0)
+    val color = when {
+        progress < 0.5f -> {
+            val t = progress * 2f
+            Color(red = 1f, green = t, blue = 0f)
+        }
+        else -> {
+            val t = (progress - 0.5f) * 2f
+            Color(red = 1f - t, green = 1f, blue = 0f)
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(label, color = Color.LightGray, fontSize = 12.sp)
+            Text("${value.roundToInt()}%", color = Color.White, fontSize = 12.sp)
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .background(Color(0xFF2D2D2D), shape = RoundedCornerShape(4.dp))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress)
+                    .fillMaxHeight()
+                    .background(color, shape = RoundedCornerShape(4.dp))
+            )
+        }
     }
 }
 
