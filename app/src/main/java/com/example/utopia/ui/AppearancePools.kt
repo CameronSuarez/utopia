@@ -59,6 +59,6 @@ fun generateAppearanceSpec(
         bodyWidthMod = bodyWidthMod,
         bodyHeightMod = bodyHeightMod,
         hasBeard = gender == Gender.MALE && rng.nextFloat() < 0.35f,
-        hasHood = rng.nextFloat() < 0.2f
+        hasHood = rng.nextFloat() < 0.05f
     )
 }

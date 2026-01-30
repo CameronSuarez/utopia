@@ -10,7 +10,10 @@ import androidx.compose.ui.graphics.nativeCanvas
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.AppearanceVariant
 import com.example.utopia.data.models.WorldState
+import com.example.utopia.util.lerp
+import java.util.concurrent.ConcurrentHashMap
 
+private val emojiYPositions = ConcurrentHashMap<String, Float>()
 data class EmojiFxAssets(
     val emojiPaint: android.graphics.Paint,
     val affinityPaint: android.graphics.Paint
@@ -42,8 +45,15 @@ fun DrawScope.drawAgentEmojiFxItem(
     // Draw Active Emoji Signals
     worldState.emojiSignals.forEach { signal ->
         if (signal.senderId == agent.id) {
-            val signalPos = worldToScreen(signal.position.toOffset(), camera)
-            
+            val yOffset = -48f
+            val startY = emojiYPositions.getOrPut(signal.id) { agent.y + yOffset }
+            val endY = agent.y + yOffset
+            val currentY = lerp(startY, endY, 0.1f)
+            emojiYPositions[signal.id] = currentY
+
+            val signalPos = worldToScreen(Offset(agent.x, currentY), camera)
+
+
             // Speech Bubble Params
             val bubbleSize = 32f * camera.zoom
             val cornerRadius = 8f * camera.zoom

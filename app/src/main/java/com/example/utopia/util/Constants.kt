@@ -3,6 +3,7 @@ package com.example.utopia.util
 object Constants {
     // --- Core World Dimensions (Required for WorldManager/NavGrid/Rendering) ---
     const val TILE_SIZE = 32f
+    const val SPRITE_TILE_SIZE = 16f // The pixel dimension of a single tile in the source sprite assets.
     const val WORLD_SCALE = 2f
 
     const val MAP_TILES_W = 100

@@ -4,9 +4,10 @@ import androidx.compose.ui.geometry.Offset
 import com.example.utopia.util.Constants
 import kotlinx.serialization.Serializable
 import androidx.compose.ui.geometry.Rect
+import java.util.UUID
 
-// Constants
-private const val TILE_PIXEL_SIZE = 16f // The dimension of one tile in pixels, for converting sprite art to world units.
+// Constants (DEPRECATED - now in Constants.kt)
+// private const val TILE_PIXEL_SIZE = 16f 
 
 @Serializable
 enum class TileType {
@@ -22,7 +23,7 @@ enum class PlacementBehavior { STAMP, STROKE }
 data class GridOffset(val x: Int, val y: Int)
 
 /**
- * Defines the static properties of a structure type.
+ * Defines the static properties of a a structure type.
  *
  * ARCHITECTURAL CONTRACT:
  * - Anchor: A structure's (x, y) position is its BOTTOM-LEFT corner in world space.
@@ -46,28 +47,28 @@ enum class StructureType(
     val hitOffsetXWorld: Float = 0f,
     val hitOffsetYWorld: Float = 0f
 ) {
-    ROAD(PlacementBehavior.STROKE, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE, blocksNavigation = false, baselineTileY = 0),
-    WALL(PlacementBehavior.STROKE, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE, blocksNavigation = true, baselineTileY = 0),
+    ROAD(PlacementBehavior.STROKE, Constants.SPRITE_TILE_SIZE, Constants.SPRITE_TILE_SIZE, blocksNavigation = false, baselineTileY = 0),
+    WALL(PlacementBehavior.STROKE, Constants.SPRITE_TILE_SIZE, Constants.SPRITE_TILE_SIZE, blocksNavigation = true, baselineTileY = 0),
     HOUSE(PlacementBehavior.STAMP, 52f, 40f, blocksNavigation = true, capacity = Constants.HOUSE_CAPACITY, baselineTileY = 2),
-    STORE(PlacementBehavior.STAMP, 44f, 41f, blocksNavigation = true, baselineTileY = 2),
+    STORE(PlacementBehavior.STAMP, 38f, 36f, blocksNavigation = true, baselineTileY = 2),
     WORKSHOP(PlacementBehavior.STAMP, 50f, 42f, blocksNavigation = true, baselineTileY = 2),
     CASTLE(PlacementBehavior.STAMP, 72f, 76f, blocksNavigation = true, capacity = 4, baselineTileY = 4),
     PLAZA(PlacementBehavior.STAMP, 48f, 32f, blocksNavigation = true, baselineTileY = 3),
     TAVERN(PlacementBehavior.STAMP, 56f, 50f, blocksNavigation = true, capacity = 4, baselineTileY = 3); // Removed isHotspot here
 
     val providesSleep: Boolean get() = this == HOUSE || this == CASTLE
-    val providesSocial: Boolean get() = this == PLAZA || this == TAVERN
+    val providesSocial: Boolean get() = false // Deprecated: Social is now an emergent behavior
     val providesFun: Boolean get() = this == TAVERN || this == PLAZA
     val providesStability: Boolean get() = this == STORE || this == WORKSHOP
     val providesStimulation: Boolean get() = this == STORE || this == WORKSHOP || this == CASTLE
 
     /** The physical width of the structure's footprint in world units. Used for collision and NavGrid baking. */
     val worldWidth: Float
-        get() = (spriteWidthPx / TILE_PIXEL_SIZE) * Constants.TILE_SIZE * Constants.WORLD_SCALE
+        get() = (spriteWidthPx / Constants.SPRITE_TILE_SIZE) * Constants.TILE_SIZE * Constants.WORLD_SCALE
 
     /** The physical height of the structure's footprint in world units. Used for collision and NavGrid baking. */
     val worldHeight: Float
-        get() = (spriteHeightPx / TILE_PIXEL_SIZE) * Constants.TILE_SIZE * Constants.WORLD_SCALE
+        get() = (spriteHeightPx / Constants.SPRITE_TILE_SIZE) * Constants.TILE_SIZE * Constants.WORLD_SCALE
 
     val baselineWorld: Float
         get() = baselineTileY * Constants.TILE_SIZE * Constants.WORLD_SCALE
@@ -104,19 +105,17 @@ data class AppearanceSpec(val skinToneId: Int, val hairColorId: Int, val tunicCo
 @Serializable
 data class AgentProfile(val gender: Gender = Gender.MALE, val appearance: AppearanceSpec? = null)
 
-// Simplified appearance variants (unused workers variants removed)
 @Serializable
 enum class AppearanceVariant { DEFAULT } 
 
-// Simplified Agent State: only transport/idle/sleep remain
 @Serializable
-enum class AgentState { IDLE, TRAVELING, SLEEPING, SOCIALIZING }
+enum class AgentState { IDLE, TRAVELING, SLEEPING, SOCIALIZING, WORKING, HAVING_FUN, TRADING }
 @Serializable
 enum class PoiType { HOUSE, STORE, WORKSHOP, CASTLE, PLAZA, TAVERN }
 @Serializable
 data class POI(val id: String, val type: PoiType, val pos: SerializableOffset)
 @Serializable
-data class SerializableOffset(val x: Float, val y: Float) {
+data class SerializableOffset(var x: Float, var y: Float) {
     fun toOffset() = Offset(x, y)
 }
 
@@ -158,6 +157,7 @@ data class SocialField(
 
 @Serializable
 data class EmojiSignal(
+    val id: String = UUID.randomUUID().toString(),
     val senderId: String,
     val emojiType: String, // e.g. "HAPPY", "ANGRY", "WAVE"
     val targetAgentId: String? = null, // Used for gossip to show a portrait
