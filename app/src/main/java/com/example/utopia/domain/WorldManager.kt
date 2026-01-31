@@ -354,7 +354,11 @@ class WorldManager(private val navGrid: NavGrid) {
 
     fun incrementVersion() {
         val currentState = _worldState.value
-        _worldState.value = currentState.copy(version = currentState.version + 1)
+        _worldState.value = currentState.copy(
+            version = currentState.version + 1,
+            roadRevision = currentState.roadRevision + 1,
+            structureRevision = currentState.structureRevision + 1
+        )
         staticLayerId++
     }
 
@@ -575,37 +579,67 @@ class WorldManager(private val navGrid: NavGrid) {
         if (tiles.isEmpty()) return emptyList()
 
         val addedIds = mutableListOf<String>()
-        var currentState = _worldState.value
-
+        val startState = _worldState.value
+        
+        // Create working copies ONCE for the whole batch
+        val workingTiles = startState.copyTiles()
+        val workingStructures = startState.structures.toMutableList()
+        val workingProps = startState.props.toMutableList()
+        
         var changed = false
         for ((gx, gy) in tiles) {
             val wx = (gx * Constants.TILE_SIZE)
-            // Anchor is bottom-left, so we add height to get the Y for the tile grid.
             val wy = ((gy + 1) * Constants.TILE_SIZE)
 
-            if (isAlreadyOccupiedBySameType(currentState.tiles, type, gx, gy)) continue
+            // Use the authoritative canPlaceInternal check
+            if (isAlreadyOccupiedBySameType(workingTiles, type, gx, gy)) continue
+            
+            // Note: canPlaceInternal checks against the current state, which is fine for overlap, 
+            // but we need to be careful with tiles we just modified in this loop.
+            // For roads, overlap with other roads is fine/skipped above.
+            if (canPlaceInternal(startState, type, wx, wy)) {
+                val id = UUID.randomUUID().toString()
+                val newStructure = Structure(id, type, wx, wy)
+                
+                // 1. Clear props on the single tile
+                val propsToRemove = workingProps.filter { prop ->
+                    getPropFootprintTiles(prop).any { (ptX, ptY) -> ptX == gx && ptY == gy }
+                }
+                if (propsToRemove.isNotEmpty()) {
+                    propsToRemove.forEach { p ->
+                        getPropFootprintTiles(p).forEach { (tx, ty) ->
+                            unionDirtyRect(Rect(tx * Constants.TILE_SIZE, ty * Constants.TILE_SIZE, (tx + 1) * Constants.TILE_SIZE, (ty + 1) * Constants.TILE_SIZE))
+                        }
+                    }
+                    workingProps.removeAll(propsToRemove)
+                }
 
-            if (canPlaceInternal(currentState, type, wx, wy)) {
-                val newStructure = Structure(UUID.randomUUID().toString(), type, wx, wy)
-                currentState = bakeStrokeSegmentToWorld(currentState, newStructure)
-                addedIds.add(newStructure.id)
+                // 2. Apply the tile type to our working array
+                applyStructureToTiles(workingTiles, newStructure)
+                
+                // 3. Add to working structures
+                workingStructures.add(newStructure)
+
+                // 4. Mark dirty for NavGrid
+                unionDirtyRect(Rect(newStructure.x, newStructure.y - newStructure.type.worldHeight, newStructure.x + newStructure.type.worldWidth, newStructure.y))
+                
+                addedIds.add(id)
                 changed = true
             } else if (type == StructureType.WALL) {
-                // Stop placing wall segments if one is blocked, to ensure contiguous walls.
                 break
             }
         }
 
         if (changed) {
-            // Batch update revisions and POIs after all segments are placed.
-            val roadChanged = type == StructureType.ROAD
-            val structChanged = type != StructureType.ROAD
-
-            val newState = currentState.copy(
-                roadRevision = if (roadChanged) currentState.roadRevision + 1 else currentState.roadRevision,
-                structureRevision = if (structChanged) currentState.structureRevision + 1 else currentState.structureRevision
+            // Commit all changes in a single state update
+            _worldState.value = startState.copy(
+                tiles = workingTiles,
+                structures = workingStructures,
+                props = workingProps,
+                version = startState.version + 1
             )
-            _worldState.value = newState.copy(pois = generatePOIs(newState))
+            // Re-generate POIs once
+            _worldState.value = _worldState.value.copy(pois = generatePOIs(_worldState.value))
             staticLayerId++
         }
 

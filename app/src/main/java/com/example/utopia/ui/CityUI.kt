@@ -44,7 +44,9 @@ fun CityScreen(viewModel: GameViewModel) {
     val grass2 = ImageBitmap.imageResource(R.drawable.grass2)
     val grass3 = ImageBitmap.imageResource(R.drawable.grass3)
     val grass4 = ImageBitmap.imageResource(R.drawable.grass4)
-    val grassBitmaps = listOf(grass1, grass2, grass3, grass4)
+    val grass5 = ImageBitmap.imageResource(R.drawable.grass5)
+    val grass6 = ImageBitmap.imageResource(R.drawable.grass6)
+    val grassBitmaps = listOf(grass1, grass2, grass3, grass4, grass5, grass6)
     val roadBitmapAsset = ImageBitmap.imageResource(R.drawable.road)
 
     // Caches & Asset Management

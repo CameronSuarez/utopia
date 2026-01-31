@@ -36,6 +36,7 @@ data class AgentRuntime(
     @Transient val lastPosY: Float = 0f,
     @Transient val animTimerMs: Long = 0L,
     @Transient val animFrame: Int = 0,
+    @Transient val animAcc: Float = 0f,
     @Transient val facingLeft: Boolean = false,
     @Transient val dwellTimerMs: Long = 0L,
     @Transient val yieldUntilMs: Long = 0L,

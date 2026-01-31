@@ -84,8 +84,15 @@ private fun DrawScope.drawNaturalGroundInternal(
             if (tileType == TileType.WALL) {
                 drawRect(Color(0xFF795548L), Offset(px, py), Size(tileSize, tileSize))
             } else {
+                // Use a stable hash of coordinates with a strong avalanche finalizer
+                // to shatter grid-aligned patterns and ensure uniform distribution.
+                var h = x * 374761393L + y * 668265263L
+                h = (h xor (h ushr 33)) * -0xae502812aa7333L
+                h = (h xor (h ushr 33)) * -0x3b3146010f6d7dL
+                h = h xor (h ushr 33)
+                val variantIndex = (h % grassBitmaps.size).toInt().let { if (it < 0) it + grassBitmaps.size else it }
                 drawImage(
-                    image = grassBitmaps.random(),
+                    image = grassBitmaps[variantIndex],
                     dstOffset = IntOffset(px.roundToInt(), py.roundToInt()),
                     dstSize = dstIntSize,
                     filterQuality = FilterQuality.None

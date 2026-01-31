@@ -47,7 +47,6 @@ fun DrawScope.drawAgentItem(
     val cullPadY = 60f * scale
     if (screenPos.x < -cullPadX || screenPos.x > size.width + cullPadX || screenPos.y < -cullPadY || screenPos.y > size.height + cullPadY) return
 
-    val isMoving = (agent.goalPos != null || agent.pathTiles.isNotEmpty()) && agent.dwellTimerMs <= 0L && agent.state != AgentState.SLEEPING
     val isSleeping = agent.state == AgentState.SLEEPING
 
     val spec = agent.profile.appearance ?: run {
@@ -64,10 +63,10 @@ fun DrawScope.drawAgentItem(
 
     if (isSleeping) {
         bobY = 4f
-    } else if (isMoving) {
+    } else {
         if (agent.animFrame % 2 == 1) {
-            bobY = -3f
-            squashX = -1f
+            bobY = -1.5f
+            squashX = -0.5f
         }
     }
 
@@ -87,7 +86,7 @@ fun DrawScope.drawAgentItem(
             swayX = swayX,
             headBobY = headBobY,
             legOffset = legOffset,
-            showLegs = isMoving && !isSleeping,
+            showLegs = !isSleeping,
             isSleeping = isSleeping
         )
     )
@@ -117,6 +116,13 @@ internal fun DrawScope.renderAgentLayers(
     withTransform({
         scale(renderParams.scale, renderParams.scale, pivot = screenPos)
     }) {
+        // Shadow
+        drawOval(
+            color = Color.Black.copy(alpha = 0.2f),
+            topLeft = Offset(screenPos.x - baseBodyWidth / 2f + anim.swayX, screenPos.y + 3f),
+            size = Size(baseBodyWidth, 4f)
+        )
+
         if (anim.showLegs) {
             drawRect(Color.DarkGray, Offset(screenPos.x - 4f + anim.legOffset, screenPos.y + 2f), Size(3f, 4f))
             drawRect(Color.DarkGray, Offset(screenPos.x + 1f - anim.legOffset, screenPos.y + 2f), Size(3f, 4f))

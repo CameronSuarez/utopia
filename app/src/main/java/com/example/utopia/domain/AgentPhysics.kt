@@ -26,8 +26,8 @@ import kotlin.random.Random
  * 3. Separation: Keeping agents from overlapping.
  */
 
-private const val ANIM_TICK_MS = 150L
 private const val DAMPING = 0.985f // Dimensionless damping factor (0.98-0.99 is ideal for 60fps)
+private const val STRIDE_PX = 32f // The distance covered in one full 4-frame animation cycle.
 
 internal fun updateAgents(
     agents: List<AgentRuntime>,
@@ -52,19 +52,17 @@ private fun updateAgentTick(
     if (agent.state == AgentState.SOCIALIZING) {
         return agent.copy(
             velocity = SerializableOffset(0f, 0f),
-            animFrame = 0,
-            animTimerMs = 0
+            animFrame = 0
         )
     }
-    
+
     // Agents in these states are stationary, but can "break out" if their intent changes.
     if (agent.state == AgentState.SLEEPING || agent.state == AgentState.WORKING) {
         val intentSatisfied = isIntentSatisfied(agent, worldState)
         if (intentSatisfied) {
             return agent.copy(
                 velocity = SerializableOffset(0f, 0f),
-                animFrame = 0,
-                animTimerMs = 0
+                animFrame = 0
             )
         }
     }
@@ -103,12 +101,9 @@ private fun updateAgentTick(
     val newPosition = tryMove(agent, step.x, step.y, navGrid)
 
     // 7. UPDATE ANIMATION STATE
-    val isMoving = step.getDistance() > 0.01f
-    val nextAnimFrame = if (isMoving) {
-        val totalAnimTime = agent.animTimerMs + deltaTimeMs
-        if (totalAnimTime >= ANIM_TICK_MS) (agent.animFrame + 1) % 4 else agent.animFrame
-    } else 0
-    val nextAnimTimer = if (isMoving) (agent.animTimerMs + deltaTimeMs) % ANIM_TICK_MS else 0L
+    val moveSpeedPxPerSec = newVelocity.getDistance()
+    val nextAnimAcc = agent.animAcc + (moveSpeedPxPerSec / STRIDE_PX) * deltaSeconds
+    val nextAnimFrame = (nextAnimAcc * 4f).toInt() and 3
 
     val nextFacingLeft = if (abs(step.x) > 0.01f) step.x < 0 else agent.facingLeft
 
@@ -135,16 +130,16 @@ private fun updateAgentTick(
         else -> null
     }
 
-
+    val isMoving = newVelocity.getDistanceSquared() > 0.1f
     val nextState = intentSatisfiedState ?: if (isMoving) AgentState.TRAVELING else AgentState.IDLE
-    
+
     return agent.copy(
         position = newPosition,
         velocity = SerializableOffset(newVelocity.x, newVelocity.y),
         lastPosX = agent.x,
         lastPosY = agent.y,
+        animAcc = nextAnimAcc,
         animFrame = nextAnimFrame,
-        animTimerMs = nextAnimTimer,
         facingLeft = nextFacingLeft,
         state = nextState
     )

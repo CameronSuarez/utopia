@@ -49,12 +49,12 @@ enum class StructureType(
 ) {
     ROAD(PlacementBehavior.STROKE, Constants.SPRITE_TILE_SIZE, Constants.SPRITE_TILE_SIZE, blocksNavigation = false, baselineTileY = 0),
     WALL(PlacementBehavior.STROKE, Constants.SPRITE_TILE_SIZE, Constants.SPRITE_TILE_SIZE, blocksNavigation = true, baselineTileY = 0),
-    HOUSE(PlacementBehavior.STAMP, 80.5f, 62.5f, blocksNavigation = true, capacity = Constants.HOUSE_CAPACITY, baselineTileY = 2),
-    STORE(PlacementBehavior.STAMP, 60.4f, 46.9f, blocksNavigation = true, baselineTileY = 2),
-    WORKSHOP(PlacementBehavior.STAMP, 92.6f, 62.5f, blocksNavigation = true, baselineTileY = 2),
-    CASTLE(PlacementBehavior.STAMP, 72f, 76f, blocksNavigation = true, capacity = 4, baselineTileY = 4),
-    PLAZA(PlacementBehavior.STAMP, 80.5f, 62.5f, blocksNavigation = true, baselineTileY = 3),
-    TAVERN(PlacementBehavior.STAMP, 92.6f, 62.5f, blocksNavigation = true, capacity = 4, baselineTileY = 3), // Removed isHotspot here
+    HOUSE(PlacementBehavior.STAMP, 138.8625f, 107.8125f, blocksNavigation = true, capacity = Constants.HOUSE_CAPACITY, baselineTileY = 2),
+    STORE(PlacementBehavior.STAMP, 104.19f, 80.9025f, blocksNavigation = true, baselineTileY = 2),
+    WORKSHOP(PlacementBehavior.STAMP, 159.735f, 107.8125f, blocksNavigation = true, baselineTileY = 2),
+    CASTLE(PlacementBehavior.STAMP, 124.2f, 131.1f, blocksNavigation = true, capacity = 4, baselineTileY = 4),
+    PLAZA(PlacementBehavior.STAMP, 138.8625f, 107.8125f, blocksNavigation = true, baselineTileY = 3),
+    TAVERN(PlacementBehavior.STAMP, 159.735f, 107.8125f, blocksNavigation = true, capacity = 4, baselineTileY = 3), // Removed isHotspot here
     ;
 
     val providesSleep: Boolean get() = this == HOUSE || this == CASTLE
@@ -65,11 +65,11 @@ enum class StructureType(
 
     /** The physical width of the structure's footprint in world units. Used for collision and NavGrid baking. */
     val worldWidth: Float
-        get() = (spriteWidthPx / Constants.SPRITE_TILE_SIZE) * Constants.TILE_SIZE * Constants.WORLD_SCALE
+        get() = (spriteWidthPx / Constants.SPRITE_TILE_SIZE) * Constants.TILE_SIZE
 
     /** The physical height of the structure's footprint in world units. Used for collision and NavGrid baking. */
     val worldHeight: Float
-        get() = (spriteHeightPx / Constants.SPRITE_TILE_SIZE) * Constants.TILE_SIZE * Constants.WORLD_SCALE
+        get() = (spriteHeightPx / Constants.SPRITE_TILE_SIZE) * Constants.TILE_SIZE
 
     val baselineWorld: Float
         get() = baselineTileY * Constants.TILE_SIZE * Constants.WORLD_SCALE

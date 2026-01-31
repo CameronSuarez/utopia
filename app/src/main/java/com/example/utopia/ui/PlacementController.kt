@@ -80,7 +80,10 @@ class PlacementController(
         val camera = Camera2D(cameraOffset)
         currentStrokeIds.clear()
         lastPlacedTile = null
-        liveRoadTilesInternal.clear()
+        // Do not clear liveRoadTiles here if we want to support multi-stroke handoff,
+        // but for a fresh tool start, it's usually safe.
+        // For flicker-prevention, we clear only when starting a NEW stroke.
+        liveRoadTilesInternal.clear() 
 
         activeTool = tool
         
@@ -180,7 +183,10 @@ class PlacementController(
                 }
                 state = PlacementState.ARMED_STROKE
                 lastPlacedTile = null
-                liveRoadTilesInternal.clear()
+                // Optimization: We DO NOT clear liveRoadTilesInternal immediately.
+                // We leave them visible so the RoadLayer draws them while the 
+                // high-res RoadCache bitmap is regenerating in the background.
+                // They will be cleared when the next pointer operation begins.
             }
             else -> {}
         }
