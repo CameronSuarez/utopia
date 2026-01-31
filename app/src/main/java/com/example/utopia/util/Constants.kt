@@ -38,9 +38,13 @@ object Constants {
     const val INTENT_COMMITMENT_MS = 8000L // 8 seconds of sticking to a task
     const val MOMENTUM_BIAS = 0.15f        // Extra pressure added to current intent
 
+    // --- Social / Gossip Constants ---
+    const val GOSSIP_CHANCE = 0.05f           // Chance per tick for an agent to gossip in a group
+    const val GOSSIP_SPILLOVER_FACTOR = 0.5f  // How much of the speaker's opinion transfers
+
     // UI & Interaction
     const val TOOLBAR_DRAG_SLOP = 25f
 
     // Separation Constants (Required for AgentMovement.kt)
-    const val AGENT_COLLISION_RADIUS = 32f
+    const val AGENT_COLLISION_RADIUS = 36.8f
 }

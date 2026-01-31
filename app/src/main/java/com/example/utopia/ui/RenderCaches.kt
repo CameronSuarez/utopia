@@ -36,11 +36,11 @@ import kotlin.math.roundToInt
 // --- Ground Cache ---
 
 @Composable
-fun rememberGroundCache(worldState: WorldState, grassBitmap: ImageBitmap): ImageBitmap? {
+fun rememberGroundCache(worldState: WorldState, grassBitmaps: List<ImageBitmap>): ImageBitmap? {
     val density = LocalDensity.current
     var groundBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
 
-    LaunchedEffect(worldState.structureRevision) {
+    LaunchedEffect(worldState.structureRevision, grassBitmaps) {
         val bitmap = withContext(Dispatchers.Default) {
             val width = Constants.WORLD_W_PX.toInt()
             val height = Constants.WORLD_H_PX.toInt()
@@ -54,7 +54,7 @@ fun rememberGroundCache(worldState: WorldState, grassBitmap: ImageBitmap): Image
                 canvas = canvas,
                 size = Size(width.toFloat(), height.toFloat())
             ) {
-                drawNaturalGroundInternal(worldState.tiles, grassBitmap)
+                drawNaturalGroundInternal(worldState.tiles, grassBitmaps)
             }
             targetBitmap
         }
@@ -66,10 +66,14 @@ fun rememberGroundCache(worldState: WorldState, grassBitmap: ImageBitmap): Image
 
 private fun DrawScope.drawNaturalGroundInternal(
     tiles: Array<Array<TileType>>,
-    grassBitmap: ImageBitmap
+    grassBitmaps: List<ImageBitmap>
 ) {
     val tileSize = Constants.TILE_SIZE
     val dstIntSize = IntSize(tileSize.roundToInt(), tileSize.roundToInt())
+
+    if (grassBitmaps.isEmpty()) {
+        return
+    }
 
     for (x in 0 until Constants.MAP_TILES_W) {
         for (y in 0 until Constants.MAP_TILES_H) {
@@ -81,7 +85,7 @@ private fun DrawScope.drawNaturalGroundInternal(
                 drawRect(Color(0xFF795548L), Offset(px, py), Size(tileSize, tileSize))
             } else {
                 drawImage(
-                    image = grassBitmap,
+                    image = grassBitmaps.random(),
                     dstOffset = IntOffset(px.roundToInt(), py.roundToInt()),
                     dstSize = dstIntSize,
                     filterQuality = FilterQuality.None
@@ -152,7 +156,7 @@ private const val PORTRAIT_HEAD_TOP_PADDING_FACTOR = 0.6f
 private const val PORTRAIT_TORSO_BOTTOM_PADDING_FACTOR = 0.1f
 private const val PORTRAIT_DEBUG_LOGS = false
 
-internal data class PortraitKey(
+data class PortraitKey(
     val skinToneId: Int,
     val hairColorId: Int,
     val tunicColorId: Int,
@@ -178,7 +182,7 @@ internal data class PortraitKey(
     )
 }
 
-internal class PortraitCache(
+class PortraitCache(
     private val maxEntries: Int = 128
 ) {
     private val cache = object : LinkedHashMap<PortraitKey, ImageBitmap>(maxEntries, 0.75f, true) {

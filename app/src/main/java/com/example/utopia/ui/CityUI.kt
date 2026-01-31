@@ -24,7 +24,6 @@ import androidx.compose.ui.zIndex
 import com.example.utopia.R
 import com.example.utopia.data.models.*
 import com.example.utopia.debug.AgentLabelOverlay
-// REMOVED: import com.example.utopia.util.Constants
 
 /**
  * The high-level orchestrator for the City screen.
@@ -41,11 +40,15 @@ fun CityScreen(viewModel: GameViewModel) {
     val latestPlacementState by rememberUpdatedState(pc.state)
 
     // Load Assets
-    val grassBitmap = ImageBitmap.imageResource(R.drawable.grass)
+    val grass1 = ImageBitmap.imageResource(R.drawable.grass1)
+    val grass2 = ImageBitmap.imageResource(R.drawable.grass2)
+    val grass3 = ImageBitmap.imageResource(R.drawable.grass3)
+    val grass4 = ImageBitmap.imageResource(R.drawable.grass4)
+    val grassBitmaps = listOf(grass1, grass2, grass3, grass4)
     val roadBitmapAsset = ImageBitmap.imageResource(R.drawable.road)
 
     // Caches & Asset Management
-    val groundBitmap = rememberGroundCache(worldState, grassBitmap)
+    val groundBitmap = rememberGroundCache(worldState, grassBitmaps)
     val roadBitmap = rememberRoadCache(worldState, roadBitmapAsset)
     val agentNameById = remember(worldState.agents) { worldState.agents.associate { it.id to it.name } }
 
@@ -98,10 +101,8 @@ fun CityScreen(viewModel: GameViewModel) {
             textAlign = android.graphics.Paint.Align.CENTER
         }
     }
-    val emojiFxAssets = remember(emojiPaint, affinityPaint) { EmojiFxAssets(emojiPaint, affinityPaint) }
-
-    // UI Overlay State
-    // REMOVED: var showSocialLedger by remember { mutableStateOf(false) }
+    val portraitCache = remember { PortraitCache() }
+    val emojiFxAssets = remember(emojiPaint, affinityPaint, portraitCache) { EmojiFxAssets(emojiPaint, affinityPaint, portraitCache) }
 
     Box(
         modifier = Modifier
@@ -198,9 +199,9 @@ fun CityScreen(viewModel: GameViewModel) {
                         }
                     }
             ) {
-                drawCity(
-                    worldState = worldState,
+                val renderContext = RenderContext(
                     camera = camera,
+                    timeMs = System.currentTimeMillis(),
                     groundBitmap = groundBitmap,
                     roadBitmap = roadBitmap,
                     roadAsset = roadBitmapAsset,
@@ -208,12 +209,19 @@ fun CityScreen(viewModel: GameViewModel) {
                     propAssets = propAssets,
                     emojiFxAssets = emojiFxAssets,
                     agentNameById = agentNameById,
-                    timeMs = System.currentTimeMillis(),
+                    showNavGrid = viewModel.showNavGridDebug,
+                    navGrid = viewModel.navGrid
+                )
+                val sceneSnapshot = SceneSnapshot(
+                    worldState = worldState,
                     liveRoadTiles = pc.liveRoadTiles,
-                    navGrid = viewModel.navGrid,
-                    showNavGrid = viewModel.showNavGridDebug
+                    visibleWorldObjectsYSorted = buildVisibleWorldObjects(renderContext, SceneSnapshot(worldState), size)
                 )
 
+                // Simplified Pipeline Call
+                drawCity(renderContext, sceneSnapshot)
+
+                // Debug Layers (Still separate for now, but context-ready)
                 drawDebugLayers(
                     viewModel = viewModel,
                     agents = worldState.agents,
@@ -238,8 +246,6 @@ fun CityScreen(viewModel: GameViewModel) {
                 )
             }
         }
-
-        // REMOVED: Environmental Effects Layer (Atmospheric Tints)
 
         // HUD Layer (Stats, Tools, Overlays)
         val brightness = when (viewModel.currentPhaseName) {
@@ -268,7 +274,7 @@ fun CityScreen(viewModel: GameViewModel) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
-                TownStatsStrip(viewModel, onSocialLedgerToggle = {}) // Cleaned up lambda
+                TownStatsStrip(viewModel, onSocialLedgerToggle = {})
                 DebugPanel(viewModel = viewModel, modifier = Modifier.padding(end = 8.dp))
                 TrashCan(pc)
             }
@@ -293,8 +299,6 @@ fun CityScreen(viewModel: GameViewModel) {
                 )
             }
         }
-
-        // REMOVED: SocialLedgerOverlay display logic
     }
 }
 

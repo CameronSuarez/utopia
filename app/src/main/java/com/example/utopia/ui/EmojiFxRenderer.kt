@@ -16,7 +16,8 @@ import java.util.concurrent.ConcurrentHashMap
 private val emojiYPositions = ConcurrentHashMap<String, Float>()
 data class EmojiFxAssets(
     val emojiPaint: android.graphics.Paint,
-    val affinityPaint: android.graphics.Paint
+    val affinityPaint: android.graphics.Paint,
+    val portraitCache: PortraitCache // Pass shared cache through context/assets
 )
 
 fun DrawScope.drawEmojiFx(
@@ -55,8 +56,8 @@ fun DrawScope.drawAgentEmojiFxItem(
 
 
             // Speech Bubble Params
-            val bubbleSize = 32f * camera.zoom
-            val cornerRadius = 8f * camera.zoom
+            val bubbleSize = 36.8f * camera.zoom
+            val cornerRadius = 9.2f * camera.zoom
             
             // Draw Bubble Background
             drawRoundRect(
@@ -80,7 +81,7 @@ fun DrawScope.drawAgentEmojiFxItem(
                 val targetAgent = worldState.agents.find { it.id == signal.targetAgentId }
                 if (targetAgent != null) {
                     val spec = targetAgent.profile.appearance ?: fallbackAppearanceSpec(targetAgent.profile.gender, targetAgent.shortId)
-                    val portrait = portraitCache.getPortrait(
+                    val portrait = assets.portraitCache.getPortrait(
                         key = PortraitKey(spec, AppearanceVariant.DEFAULT, sizePx = 64),
                         gender = targetAgent.profile.gender,
                         facingLeft = false
@@ -101,7 +102,7 @@ fun DrawScope.drawAgentEmojiFxItem(
                 }
             } else {
                 // RENDER EMOJI
-                assets.emojiPaint.textSize = 22f * camera.zoom
+                assets.emojiPaint.textSize = 25.3f * camera.zoom
                 assets.emojiPaint.textAlign = android.graphics.Paint.Align.CENTER
                 
                 // Center emoji in bubble

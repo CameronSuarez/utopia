@@ -49,12 +49,13 @@ enum class StructureType(
 ) {
     ROAD(PlacementBehavior.STROKE, Constants.SPRITE_TILE_SIZE, Constants.SPRITE_TILE_SIZE, blocksNavigation = false, baselineTileY = 0),
     WALL(PlacementBehavior.STROKE, Constants.SPRITE_TILE_SIZE, Constants.SPRITE_TILE_SIZE, blocksNavigation = true, baselineTileY = 0),
-    HOUSE(PlacementBehavior.STAMP, 52f, 40f, blocksNavigation = true, capacity = Constants.HOUSE_CAPACITY, baselineTileY = 2),
-    STORE(PlacementBehavior.STAMP, 38f, 36f, blocksNavigation = true, baselineTileY = 2),
-    WORKSHOP(PlacementBehavior.STAMP, 50f, 42f, blocksNavigation = true, baselineTileY = 2),
+    HOUSE(PlacementBehavior.STAMP, 80.5f, 62.5f, blocksNavigation = true, capacity = Constants.HOUSE_CAPACITY, baselineTileY = 2),
+    STORE(PlacementBehavior.STAMP, 60.4f, 46.9f, blocksNavigation = true, baselineTileY = 2),
+    WORKSHOP(PlacementBehavior.STAMP, 92.6f, 62.5f, blocksNavigation = true, baselineTileY = 2),
     CASTLE(PlacementBehavior.STAMP, 72f, 76f, blocksNavigation = true, capacity = 4, baselineTileY = 4),
-    PLAZA(PlacementBehavior.STAMP, 48f, 32f, blocksNavigation = true, baselineTileY = 3),
-    TAVERN(PlacementBehavior.STAMP, 56f, 50f, blocksNavigation = true, capacity = 4, baselineTileY = 3); // Removed isHotspot here
+    PLAZA(PlacementBehavior.STAMP, 80.5f, 62.5f, blocksNavigation = true, baselineTileY = 3),
+    TAVERN(PlacementBehavior.STAMP, 92.6f, 62.5f, blocksNavigation = true, capacity = 4, baselineTileY = 3), // Removed isHotspot here
+    ;
 
     val providesSleep: Boolean get() = this == HOUSE || this == CASTLE
     val providesSocial: Boolean get() = false // Deprecated: Social is now an emergent behavior
