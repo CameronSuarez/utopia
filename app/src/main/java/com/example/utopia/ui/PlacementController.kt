@@ -2,9 +2,10 @@ package com.example.utopia.ui
 
 import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
+import com.example.utopia.data.StructureRegistry
 import com.example.utopia.data.models.PlacementBehavior
 import com.example.utopia.data.models.Structure
-import com.example.utopia.data.models.StructureType
+import com.example.utopia.data.models.StructureSpec
 import com.example.utopia.domain.WorldManager
 import com.example.utopia.util.WorldGridMath
 import com.example.utopia.util.IntOffset
@@ -18,24 +19,6 @@ enum class PlacementState {
     BRUSHING
 }
 
-/**
- * Manages the UI state for placing and moving structures in the world.
- *
- * ARCHITECTURAL CONTRACT:
- * This controller is the primary interface between the UI and the WorldManager for structure placement.
- * It is responsible for translating screen gestures into world commands.
- *
- * FUTURE WORK (Option B from analysis):
- * A single, authoritative function (e.g., `WorldManager.BakeBuildingToWorld`) should be created
- * to handle all world state mutations related to placing a building. This function will be
- * responsible for:
- * 1.  Clearing props within the building's larger "influence area" (defined by lot tiles).
- * 2.  Blocking the NavGrid based on the building's smaller "physical footprint" (the hitbox).
- * 3.  Claiming lot tiles to enforce spacing and ownership rules.
- *
- * This controller will then call that single function, ensuring all placements are consistent
- * and preventing logic from being scattered.
- */
 class PlacementController(
     private val worldManager: WorldManager,
     private val onWorldChanged: () -> Unit
@@ -43,7 +26,7 @@ class PlacementController(
     var state by mutableStateOf(PlacementState.IDLE)
         private set
 
-    var activeTool by mutableStateOf<StructureType?>(null)
+    var activeTool by mutableStateOf<StructureSpec?>(null)
         private set
 
     var worldPos by mutableStateOf<Offset?>(null)
@@ -65,30 +48,28 @@ class PlacementController(
     private var lastPlacedTile: IntOffset? = null
     private val currentStrokeIds = mutableListOf<String>()
 
-    private fun getToolCost(type: StructureType): Int = when(type) {
-        StructureType.ROAD -> 2
-        StructureType.WALL -> 5
-        StructureType.HOUSE -> 50
-        StructureType.STORE -> 100
-        StructureType.WORKSHOP -> 150
-        StructureType.CASTLE -> 500
-        StructureType.PLAZA -> 200
-        StructureType.TAVERN -> 180
+    private fun getToolCost(spec: StructureSpec): Int = when(spec.id) {
+        "ROAD" -> 2
+        "WALL" -> 5
+        "HOUSE" -> 50
+        "STORE" -> 100
+        "WORKSHOP" -> 150
+        "CASTLE" -> 500
+        "PLAZA" -> 200
+        "TAVERN" -> 180
+        else -> 0
     }
 
-    fun beginPointer(tool: StructureType, screenPos: Offset, cameraOffset: Offset) {
+    fun beginPointer(tool: StructureSpec, screenPos: Offset, cameraOffset: Offset) {
         val camera = Camera2D(cameraOffset)
         currentStrokeIds.clear()
         lastPlacedTile = null
-        // Do not clear liveRoadTiles here if we want to support multi-stroke handoff,
-        // but for a fresh tool start, it's usually safe.
-        // For flicker-prevention, we clear only when starting a NEW stroke.
         liveRoadTilesInternal.clear() 
 
         activeTool = tool
         
-        val pos: Offset // World position of the structure's anchor/click point for PLACEMENT
-        val rawWorldPos = screenToWorld(screenPos, camera) // Raw pointer world position
+        val pos: Offset
+        val rawWorldPos = screenToWorld(screenPos, camera)
         val tileOffsetNudge = Constants.TILE_SIZE * 0.5f
 
         if (tool.behavior == PlacementBehavior.STAMP) {
@@ -97,7 +78,7 @@ class PlacementController(
             worldPos = pos
 
             state = PlacementState.DRAGGING_GHOST
-            isValid = worldManager.canPlace(tool, pos.x, pos.y)
+            isValid = worldManager.canPlace(tool.id, pos.x, pos.y)
         } else { // STROKE: Road or Wall
             worldPos = rawWorldPos
             pos = rawWorldPos + Offset(tileOffsetNudge, tileOffsetNudge)
@@ -105,12 +86,12 @@ class PlacementController(
             state = PlacementState.BRUSHING
             val tile = WorldGridMath.worldToTile(pos)
             lastPlacedTile = tile
-            val ids = worldManager.tryPlaceStroke(tool, listOf(tile.x to tile.y))
+            val ids = worldManager.tryPlaceStroke(tool.id, listOf(tile.x to tile.y))
             if (ids.isNotEmpty()) {
                 currentStrokeIds.addAll(ids)
                 onTilesPlaced?.invoke(getToolCost(tool) * ids.size)
             }
-            if (tool == StructureType.ROAD) {
+            if (tool.id == "ROAD") {
                 liveRoadTilesInternal.add(tile)
             }
             isValid = true
@@ -137,7 +118,7 @@ class PlacementController(
 
         when (state) {
             PlacementState.DRAGGING_GHOST -> {
-                isValid = worldManager.canPlace(tool, newWorldPos.x, newWorldPos.y)
+                isValid = worldManager.canPlace(tool.id, newWorldPos.x, newWorldPos.y)
             }
             PlacementState.BRUSHING -> {
                 val currentTile = WorldGridMath.worldToTile(newWorldPos)
@@ -163,7 +144,7 @@ class PlacementController(
                 val pos = worldPos
                 val moving = movingStructure
                 if (tool != null && pos != null && isValid) {
-                    worldManager.tryPlaceStamp(tool, pos.x, pos.y, existingStructure = moving)
+                    worldManager.tryPlaceStamp(tool.id, pos.x, pos.y, existingStructure = moving)
                     if (moving == null) onTilesPlaced?.invoke(getToolCost(tool))
                     changed = true
                     state = PlacementState.ARMED_STROKE
@@ -183,19 +164,15 @@ class PlacementController(
                 }
                 state = PlacementState.ARMED_STROKE
                 lastPlacedTile = null
-                // Optimization: We DO NOT clear liveRoadTilesInternal immediately.
-                // We leave them visible so the RoadLayer draws them while the 
-                // high-res RoadCache bitmap is regenerating in the background.
-                // They will be cleared when the next pointer operation begins.
             }
             else -> {}
         }
         if (changed) onWorldChanged()
     }
 
-    fun selectTool(type: StructureType) {
+    fun selectTool(spec: StructureSpec) {
         cancel()
-        activeTool = type
+        activeTool = spec
         state = PlacementState.ARMED_STROKE
     }
 
@@ -203,7 +180,7 @@ class PlacementController(
         cancel()
         movingStructure = structure
         originalPosition = Offset(structure.x, structure.y)
-        activeTool = structure.type
+        activeTool = structure.spec
         worldPos = Offset(structure.x, structure.y)
         state = PlacementState.DRAGGING_GHOST
         worldManager.removeStructureAt(structure.x, structure.y, isMoving = true)
@@ -214,12 +191,12 @@ class PlacementController(
         val tool = activeTool ?: return
         val line = getLine(lastTile, currentTile)
         val tiles = line.map { it.x to it.y }
-        val ids = worldManager.tryPlaceStroke(tool, tiles)
+        val ids = worldManager.tryPlaceStroke(tool.id, tiles)
         if (ids.isNotEmpty()) {
             currentStrokeIds.addAll(ids)
             onTilesPlaced?.invoke(getToolCost(tool) * ids.size)
         }
-        if (tool == StructureType.ROAD) {
+        if (tool.id == "ROAD") {
             liveRoadTilesInternal.addAll(line)
         }
         lastPlacedTile = currentTile
@@ -245,7 +222,7 @@ class PlacementController(
         val tool = activeTool ?: return
         val pos = originalPosition ?: return
         val moving = movingStructure ?: return
-        worldManager.tryPlaceStamp(tool, pos.x, pos.y, existingStructure = moving)
+        worldManager.tryPlaceStamp(tool.id, pos.x, pos.y, existingStructure = moving)
         state = PlacementState.IDLE
         activeTool = null
         worldPos = null

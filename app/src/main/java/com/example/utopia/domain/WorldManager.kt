@@ -9,34 +9,36 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import com.example.utopia.data.StructureRegistry
 import com.example.utopia.data.models.*
 import com.example.utopia.ui.generateAppearanceSpec
 import com.example.utopia.util.Constants
 import java.util.UUID
 import kotlin.random.Random
 
-/**
- * Manages the world state, including tiles, structures, and agents.
- * This is the single source of truth for world mutation.
- *
- * All world mutations must occur inside advanceTick().
- */
 private const val WORLD_SEED = 12345L
-// Defines the margin (in tiles) around a building's physical footprint to determine its influence/ownership area.
-private const val OWNERSHIP_MARGIN_X = 2 // Horizontal margin
-private const val OWNERSHIP_MARGIN_Y = 3 // Vertical margin (larger to ensure space at the front/back)
-
+private const val OWNERSHIP_MARGIN_X = 2
+private const val OWNERSHIP_MARGIN_Y = 3
 
 class WorldManager(private val navGrid: NavGrid) {
     val random = Random(WORLD_SEED)
-    private val maleNames = listOf(
-        "Alaric", "Cedric", "Eldred", "Godwin", "Ivor", "Kenric", "Merrick", "Osric", "Stig", "Ulf",
-        "Wulf", "Zoric", "Bram", "Ewan", "Quinn"
+
+    private val simulationPipeline = listOf(
+        WorldAnalysisSystem,
+        AgentAssignmentSystem,
+        AgentNeedsSystemWrapper,
+        AgentSocialSystemWrapper,
+        AgentGossipSystemWrapper,
+        AgentEmojiSystemWrapper,
+        AgentRelationshipSystemWrapper,
+        AgentIntentSystemWrapper,
+        AgentPhysicsWrapper(navGrid),
+        EconomySystemWrapper,
+        StaleTargetCleanupSystem
     )
-    private val femaleNames = listOf(
-        "Beatrice", "Drusilla", "Faye", "Hilda", "Joan", "Lulu", "Nell", "Pippa", "Rowena", "Tilda",
-        "Vera", "Xenia", "Yrsa", "Cora", "Dara"
-    )
+
+    private val maleNames = listOf("Alaric", "Cedric", "Eldred", "Godwin", "Ivor", "Kenric", "Merrick", "Osric", "Stig", "Ulf", "Wulf", "Zoric", "Bram", "Ewan", "Quinn")
+    private val femaleNames = listOf("Beatrice", "Drusilla", "Faye", "Hilda", "Joan", "Lulu", "Nell", "Pippa", "Rowena", "Tilda", "Vera", "Xenia", "Yrsa", "Cora", "Dara")
 
     private val initialTiles = Array(Constants.MAP_TILES_W) { x ->
         Array(Constants.MAP_TILES_H) { y -> sampleGrassType(x, y) }
@@ -56,7 +58,6 @@ class WorldManager(private val navGrid: NavGrid) {
     var staticLayerId by mutableIntStateOf(0)
         private set
 
-    // Dirty Rect Tracking for NavGrid optimization
     private var pendingDirtyRect: Rect? = null
 
     private fun unionDirtyRect(rect: Rect) {
@@ -70,9 +71,6 @@ class WorldManager(private val navGrid: NavGrid) {
         } ?: rect
     }
 
-    /**
-     * Consumes and returns the accumulated dirty rect, resetting it to null.
-     */
     fun consumeDirtyRect(): Rect? {
         val rect = pendingDirtyRect
         pendingDirtyRect = null
@@ -106,9 +104,15 @@ class WorldManager(private val navGrid: NavGrid) {
             Array(Constants.MAP_TILES_H) { y -> data.tiles.getOrNull(x)?.getOrNull(y) ?: sampleGrassType(x, y) }
         }
 
+        var grid = Array(Constants.MAP_TILES_W) { Array<String?>(Constants.MAP_TILES_H) { null } }
+        data.structures.forEach { structure ->
+            grid = writeToGrid(grid, structure)
+        }
+
         _worldState.value = WorldState(
             tiles = loadedTiles,
             structures = data.structures,
+            structureGrid = grid,
             agents = data.agents,
             props = data.props,
             pois = data.pois,
@@ -119,56 +123,30 @@ class WorldManager(private val navGrid: NavGrid) {
             structureRevision = data.structureRevision
         )
         staticLayerId++
-        pendingDirtyRect = null // Force full NavGrid rebuild on load
+        pendingDirtyRect = null
     }
 
     fun advanceTick(deltaTimeMs: Long, nowMs: Long) {
-        val deltaSeconds = deltaTimeMs / 1000f
-        val startState = _worldState.value
+        val oldState = _worldState.value
+        var newState = oldState
 
-        // 1. Needs (Pure Transformation)
-        val agentsWithNeeds = startState.agents.map { agent ->
-            AgentNeedsSystem.updateNeeds(agent, deltaSeconds, startState)
+        for (system in simulationPipeline) {
+            newState = system.update(newState, deltaTimeMs, nowMs)
         }
-        val stateWithNeeds = startState.copy(agents = agentsWithNeeds)
 
-        // 2. Social Fields
-        val stateWithFields = AgentSocialSystem.updateSocialFields(stateWithNeeds, deltaSeconds)
-
-        // 3. Gossip / Emojis / Relationships
-        val stateWithGossip = AgentGossipSystem.processGossip(stateWithFields, nowMs)
-        val updatedEmojiSignals = AgentEmojiSystem.updateEmojiSignals(stateWithGossip, nowMs)
-        val stateWithSignals = stateWithGossip.copy(emojiSignals = updatedEmojiSignals)
-        val agentsWithRelationships = AgentRelationshipSystem.updateRelationships(stateWithSignals, deltaTimeMs)
-        val stateWithRelationships = stateWithSignals.copy(agents = agentsWithRelationships)
-
-        // 4. Intent
-        val agentsWithIntent = stateWithRelationships.agents.map { agent ->
-            val pressures = AgentIntentSystem.calculatePressures(agent)
-            val nextIntent = AgentIntentSystem.selectIntent(agent.copy(transientPressures = pressures), nowMs)
-            val intentChanged = nextIntent != agent.currentIntent
-            
-            agent.copy(
-                transientPressures = pressures,
-                currentIntent = nextIntent,
-                intentStartTimeMs = if (intentChanged) nowMs else agent.intentStartTimeMs
-            )
+        val newlyCompletedHouses = newState.structures.filter { newStructure ->
+            newStructure.typeId == "HOUSE" && newStructure.isComplete &&
+                    (oldState.structures.find { it.id == newStructure.id }?.isComplete == false)
         }
-        val stateWithIntent = stateWithRelationships.copy(agents = agentsWithIntent)
 
-        // 5. Movement + Physics
-        val movedAgents = updateAgents(
-            agents = stateWithIntent.agents,
-            worldState = stateWithIntent,
-            navGrid = navGrid,
-            deltaTimeMs = deltaTimeMs,
-            nowMs = nowMs
-        )
+        var finalState = newState
+        if (newlyCompletedHouses.isNotEmpty()) {
+            for (house in newlyCompletedHouses) {
+                finalState = spawnVillagersForHouse(house, finalState)
+            }
+        }
 
-        // Final Commit: Commit _worldState.value once per tick
-        _worldState.value = stateWithIntent.copy(
-            agents = movedAgents
-        )
+        _worldState.value = finalState
     }
 
     fun addAgent(agent: AgentRuntime) {
@@ -242,13 +220,14 @@ class WorldManager(private val navGrid: NavGrid) {
     }
 
     fun addStructure(structure: Structure): String? {
-        return if (structure.type.behavior == PlacementBehavior.STROKE) {
+        val spec = structure.spec
+        return if (spec.behavior == PlacementBehavior.STROKE) {
             val gx = (structure.x / Constants.TILE_SIZE).toInt()
-            val gy = ((structure.y - structure.type.worldHeight) / Constants.TILE_SIZE).toInt()
-            val ids = tryPlaceStroke(structure.type, listOf(gx to gy))
+            val gy = ((structure.y - spec.worldHeight) / Constants.TILE_SIZE).toInt()
+            val ids = tryPlaceStroke(structure.typeId, listOf(gx to gy))
             ids.firstOrNull()
         } else {
-            tryPlaceStamp(structure.type, structure.x, structure.y, existingStructure = structure)
+            tryPlaceStamp(structure.typeId, structure.x, structure.y, existingStructure = structure)
         }
     }
 
@@ -362,21 +341,16 @@ class WorldManager(private val navGrid: NavGrid) {
         staticLayerId++
     }
 
-    /**
-     * The authoritative function for adding a stamp-based structure to the world.
-     * This function enforces the architectural contract for world mutation.
-     */
     private fun bakeStructureToWorld(
         currentState: WorldState,
         structure: Structure
     ): WorldState {
-        // Mark the new physical footprint area as dirty for NavGrid update.
-        unionDirtyRect(Rect(offset = Offset(structure.x, structure.y - structure.type.worldHeight), size = Size(structure.type.worldWidth, structure.type.worldHeight)))
+        val spec = structure.spec
+        unionDirtyRect(Rect(offset = Offset(structure.x, structure.y - spec.worldHeight), size = Size(spec.worldWidth, spec.worldHeight)))
 
         val newTiles = currentState.copyTiles()
 
-        // --- Step 1: Define Influence Area (Lot) using Margins ---
-        val footprintRect = Rect(structure.x, structure.y - structure.type.worldHeight, structure.x + structure.type.worldWidth, structure.y)
+        val footprintRect = Rect(structure.x, structure.y - spec.worldHeight, structure.x + spec.worldWidth, structure.y)
         val influenceRect = Rect(
             left = footprintRect.left - OWNERSHIP_MARGIN_X * Constants.TILE_SIZE,
             top = footprintRect.top - OWNERSHIP_MARGIN_Y * Constants.TILE_SIZE,
@@ -389,7 +363,6 @@ class WorldManager(private val navGrid: NavGrid) {
         val lotMaxY = (influenceRect.bottom / Constants.TILE_SIZE).toInt()
 
 
-        // --- Step 2: Clear Props within Influence Area ---
         val newProps = currentState.props.filterNot { prop ->
             getPropFootprintTiles(prop).any { (propTileX, propTileY) ->
                 val isInside = propTileX in lotMinX..lotMaxX && propTileY in lotMinY..lotMaxY
@@ -405,35 +378,50 @@ class WorldManager(private val navGrid: NavGrid) {
             }
         }
 
-        // --- Step 3: Claim Lot Tiles and Apply Physical Footprint ---
         markLot(newTiles, lotMinX, lotMinY, lotMaxX, lotMaxY)
-        val footprintTile = if (structure.type == StructureType.PLAZA) TileType.PLAZA else TileType.BUILDING_SOLID
+        val footprintTile = if (spec.id == "PLAZA") TileType.PLAZA else TileType.BUILDING_SOLID
         markFootprint(newTiles, structure, footprintTile)
 
-        // --- Final Step: Update World State ---
+        val newGrid = writeToGrid(currentState.structureGrid, structure)
+
         return currentState.copy(
             structures = currentState.structures + structure,
             tiles = newTiles,
             props = newProps,
+            structureGrid = newGrid,
             structureRevision = currentState.structureRevision + 1,
             version = currentState.version + 1
         )
     }
 
-    fun tryPlaceStamp(type: StructureType, x: Float, y: Float, existingStructure: Structure? = null): String? {
-        if (!canPlaceInternal(_worldState.value, type, x, y, isMoving = existingStructure != null)) return null
+    fun tryPlaceStamp(typeId: String, x: Float, y: Float, existingStructure: Structure? = null): String? {
+        if (!canPlaceInternal(_worldState.value, typeId, x, y, isMoving = existingStructure != null)) return null
 
-        val newStructure = existingStructure?.copy(x = x, y = y) ?: Structure(UUID.randomUUID().toString(), type, x, y)
+        val spec = StructureRegistry.get(typeId)
+
+        val starterBuildings = listOf("HOUSE", "LUMBERJACK_HUT", "WORKSHOP")
+        val isFirstOfKind = starterBuildings.contains(typeId) && _worldState.value.structures.none { it.spec.id == typeId }
+        val needsConstruction = existingStructure == null && spec.buildCost.isNotEmpty() && !isFirstOfKind
+
+        val newStructure = existingStructure?.copy(x = x, y = y)
+            ?: Structure(
+                id = UUID.randomUUID().toString(),
+                typeId = typeId,
+                x = x,
+                y = y,
+                isComplete = !needsConstruction
+            )
 
         val newState = bakeStructureToWorld(_worldState.value, newStructure)
 
-        _worldState.value = newState.copy(pois = generatePOIs(newState))
-        staticLayerId++
+        var finalState = newState.copy(pois = generatePOIs(newState))
 
-        if (type == StructureType.HOUSE && existingStructure == null) {
-            spawnVillagersForHouse(newStructure)
+        if (typeId == "HOUSE" && !needsConstruction && existingStructure == null) {
+            finalState = spawnVillagersForHouse(newStructure, finalState)
         }
 
+        _worldState.value = finalState
+        staticLayerId++
         validateInvariants()
         return newStructure.id
     }
@@ -447,12 +435,12 @@ class WorldManager(private val navGrid: NavGrid) {
         ).filter { it.second >= 0 }
     }
 
-    private fun spawnVillagersForHouse(house: Structure) {
-        val count = Constants.HOUSE_CAPACITY
-        // Spawn agents just outside the bottom-center of the house's footprint.
-        val spawnX = house.x + house.type.worldWidth / 2
-        val spawnY = house.y + Constants.TILE_SIZE * 2f // Use house.y (bottom) as the reference.
+    private fun spawnVillagersForHouse(house: Structure, currentState: WorldState): WorldState {
+        val count = 2
+        val spawnX = house.x + house.spec.worldWidth / 2
+        val spawnY = house.y + Constants.TILE_SIZE * 2f
 
+        var workingState = currentState
         var firstVillagerName: String? = null
 
         repeat(count) {
@@ -463,22 +451,34 @@ class WorldManager(private val navGrid: NavGrid) {
 
             val jx = spawnX + (random.nextFloat() * 20f - 10f)
             val jy = spawnY + (random.nextFloat() * 10f)
-            spawnAgentWithExplicitName(house, jx, jy, name, gender)
+            workingState = spawnAgentWithExplicitName(house, jx, jy, name, gender, workingState)
         }
 
-        firstVillagerName?.let { name ->
-            val currentState = _worldState.value
-            _worldState.value = currentState.copy(
-                structures = currentState.structures.map { s ->
+        return firstVillagerName?.let { name ->
+            workingState.copy(
+                structures = workingState.structures.map { s ->
                     if (s.id == house.id) s.copy(customName = "$name's House") else s
                 }
             )
-        }
+        } ?: workingState
     }
 
-    private fun spawnAgentWithExplicitName(home: Structure, wx: Float, wy: Float, explicitName: String, gender: Gender) {
-        val currentState = _worldState.value
-        if (currentState.agents.size >= Constants.MAX_AGENTS) return
+    fun spawnAgent(x: Float, y: Float) {
+        val gender = if (random.nextFloat() < 0.5f) Gender.MALE else Gender.FEMALE
+        val namePool = if (gender == Gender.MALE) maleNames else femaleNames
+        val name = namePool.random(random)
+        _worldState.value = spawnAgentWithExplicitName(null, x, y, name, gender, _worldState.value)
+    }
+
+    private fun spawnAgentWithExplicitName(
+        home: Structure?,
+        wx: Float,
+        wy: Float,
+        explicitName: String,
+        gender: Gender,
+        currentState: WorldState
+    ): WorldState {
+        if (currentState.agents.size >= Constants.MAX_AGENTS) return currentState
 
         var finalWx = wx
         var finalWy = wy
@@ -494,7 +494,7 @@ class WorldManager(private val navGrid: NavGrid) {
                 finalWy = (gy + 0.5f) * Constants.TILE_SIZE
             } else {
                 Log.e("WorldManager", "Could not find a walkable spawn point for agent $explicitName")
-                return
+                return currentState
             }
         }
 
@@ -503,6 +503,20 @@ class WorldManager(private val navGrid: NavGrid) {
             appearance = generateAppearanceSpec(gender, random)
         )
 
+        val workplaceId = if (home == null) {
+            val workersByWorkplace = currentState.agents.filter { it.workplaceId != null }
+                .groupBy { it.workplaceId!! }
+
+            val availableWorkplace = currentState.structures.find { structure ->
+                val spec = structure.spec
+                val assignedWorkers = workersByWorkplace[structure.id]?.size ?: 0
+                (spec.id == "LUMBERJACK_HUT" || spec.id == "WORKSHOP") && spec.capacity > 0 && assignedWorkers < spec.capacity
+            }
+            availableWorkplace?.id
+        } else {
+            null
+        }
+
         val agent = AgentRuntime(
             id = UUID.randomUUID().toString(),
             name = explicitName,
@@ -510,6 +524,8 @@ class WorldManager(private val navGrid: NavGrid) {
             position = SerializableOffset(finalWx, finalWy),
             velocity = SerializableOffset(0f, 0f),
             currentIntent = AgentIntent.Idle,
+            homeId = home?.id,
+            workplaceId = workplaceId,
             personality = PersonalityVector(
                 expressiveness = random.nextFloat() * 2 - 1,
                 positivity = random.nextFloat() * 2 - 1,
@@ -527,26 +543,28 @@ class WorldManager(private val navGrid: NavGrid) {
             socialMemory = SocialMemory()
         )
 
-        val newStructures = currentState.structures.map { s ->
-            if (s.id == home.id) s.copy(residents = s.residents + agent.id) else s
+        val newStructures = if (home != null) {
+            currentState.structures.map { s ->
+                if (s.id == home.id) s.copy(residents = s.residents + agent.id) else s
+            }
+        } else {
+            currentState.structures
         }
 
-        _worldState.value = currentState.copy(
+        return currentState.copy(
             agents = currentState.agents + agent,
             structures = newStructures,
             nextAgentId = currentState.nextAgentId + 1
         )
-        staticLayerId++
     }
 
-    /** Parallel authority for stroke-based structures (Roads, Walls). */
     private fun bakeStrokeSegmentToWorld(currentState: WorldState, structure: Structure): WorldState {
+        val spec = structure.spec
         val gx = (structure.x / Constants.TILE_SIZE).toInt()
-        val gy = ((structure.y - structure.type.worldHeight) / Constants.TILE_SIZE).toInt()
+        val gy = ((structure.y - spec.worldHeight) / Constants.TILE_SIZE).toInt()
 
         val newTiles = currentState.copyTiles()
-        
-        // 1. Clear props on the single tile.
+
         val newProps = currentState.props.filterNot { prop ->
             getPropFootprintTiles(prop).any { (propTileX, propTileY) ->
                 val isInside = propTileX == gx && propTileY == gy
@@ -562,46 +580,42 @@ class WorldManager(private val navGrid: NavGrid) {
             }
         }
 
-        // 2. Apply the tile type.
         applyStructureToTiles(newTiles, structure)
 
-        // 3. Mark dirty for NavGrid update.
-        unionDirtyRect(Rect(structure.x, structure.y - structure.type.worldHeight, structure.x + structure.type.worldWidth, structure.y))
+        unionDirtyRect(Rect(structure.x, structure.y - spec.worldHeight, structure.x + spec.worldWidth, structure.y))
+
+        val newGrid = writeToGrid(currentState.structureGrid, structure)
 
         return currentState.copy(
             structures = currentState.structures + structure,
             tiles = newTiles,
-            props = newProps
+            props = newProps,
+            structureGrid = newGrid
         )
     }
 
-    fun tryPlaceStroke(type: StructureType, tiles: List<Pair<Int, Int>>): List<String> {
+    fun tryPlaceStroke(typeId: String, tiles: List<Pair<Int, Int>>): List<String> {
         if (tiles.isEmpty()) return emptyList()
 
         val addedIds = mutableListOf<String>()
         val startState = _worldState.value
-        
-        // Create working copies ONCE for the whole batch
+
         val workingTiles = startState.copyTiles()
         val workingStructures = startState.structures.toMutableList()
         val workingProps = startState.props.toMutableList()
-        
+        var workingGrid = startState.structureGrid
+
         var changed = false
         for ((gx, gy) in tiles) {
             val wx = (gx * Constants.TILE_SIZE)
             val wy = ((gy + 1) * Constants.TILE_SIZE)
 
-            // Use the authoritative canPlaceInternal check
-            if (isAlreadyOccupiedBySameType(workingTiles, type, gx, gy)) continue
-            
-            // Note: canPlaceInternal checks against the current state, which is fine for overlap, 
-            // but we need to be careful with tiles we just modified in this loop.
-            // For roads, overlap with other roads is fine/skipped above.
-            if (canPlaceInternal(startState, type, wx, wy)) {
+            if (isAlreadyOccupiedBySameType(workingTiles, typeId, gx, gy)) continue
+
+            if (canPlaceInternal(startState, typeId, wx, wy)) {
                 val id = UUID.randomUUID().toString()
-                val newStructure = Structure(id, type, wx, wy)
-                
-                // 1. Clear props on the single tile
+                val newStructure = Structure(id, typeId, wx, wy)
+
                 val propsToRemove = workingProps.filter { prop ->
                     getPropFootprintTiles(prop).any { (ptX, ptY) -> ptX == gx && ptY == gy }
                 }
@@ -614,32 +628,30 @@ class WorldManager(private val navGrid: NavGrid) {
                     workingProps.removeAll(propsToRemove)
                 }
 
-                // 2. Apply the tile type to our working array
                 applyStructureToTiles(workingTiles, newStructure)
-                
-                // 3. Add to working structures
-                workingStructures.add(newStructure)
 
-                // 4. Mark dirty for NavGrid
-                unionDirtyRect(Rect(newStructure.x, newStructure.y - newStructure.type.worldHeight, newStructure.x + newStructure.type.worldWidth, newStructure.y))
-                
+                workingStructures.add(newStructure)
+                workingGrid = writeToGrid(workingGrid, newStructure)
+
+                unionDirtyRect(Rect(newStructure.x, newStructure.y - newStructure.spec.worldHeight, newStructure.x + newStructure.spec.worldWidth, newStructure.y))
+
                 addedIds.add(id)
                 changed = true
-            } else if (type == StructureType.WALL) {
+            } else if (typeId == "WALL") {
                 break
             }
         }
 
         if (changed) {
-            // Commit all changes in a single state update
-            _worldState.value = startState.copy(
+            val newState = startState.copy(
                 tiles = workingTiles,
                 structures = workingStructures,
                 props = workingProps,
+                structureGrid = workingGrid,
                 version = startState.version + 1
             )
-            // Re-generate POIs once
-            _worldState.value = _worldState.value.copy(pois = generatePOIs(_worldState.value))
+
+            _worldState.value = newState.copy(pois = generatePOIs(newState))
             staticLayerId++
         }
 
@@ -649,21 +661,20 @@ class WorldManager(private val navGrid: NavGrid) {
 
 
     private fun applyStructureToTiles(tiles: Array<Array<TileType>>, s: Structure) {
-        val tileType = when (s.type) {
-            StructureType.ROAD -> TileType.ROAD
-            StructureType.WALL -> TileType.WALL
+        val spec = s.spec
+        val tileType = when (spec.id) {
+            "ROAD" -> TileType.ROAD
+            "WALL" -> TileType.WALL
             else -> TileType.BUILDING_SOLID
         }
         val minX = (s.x / Constants.TILE_SIZE).toInt()
-        val minY = ((s.y - s.type.worldHeight) / Constants.TILE_SIZE).toInt()
-        val maxX = ((s.x + s.type.worldWidth - 1f) / Constants.TILE_SIZE).toInt()
+        val minY = ((s.y - spec.worldHeight) / Constants.TILE_SIZE).toInt()
+        val maxX = ((s.x + spec.worldWidth - 1f) / Constants.TILE_SIZE).toInt()
         val maxY = ((s.y - 1f) / Constants.TILE_SIZE).toInt()
 
         for (ix in minX..maxX) {
             for (iy in minY..maxY) {
                 if (ix in 0 until Constants.MAP_TILES_W && iy in 0 until Constants.MAP_TILES_H) {
-                    // Check if we are placing a road over a lot. 
-                    // ROAD placement is allowed but it takes precedence over BUILDING_LOT.
                     tiles[ix][iy] = tileType
                 }
             }
@@ -675,7 +686,6 @@ class WorldManager(private val navGrid: NavGrid) {
             for (iy in minY..maxY) {
                 if (ix in 0 until Constants.MAP_TILES_W && iy in 0 until Constants.MAP_TILES_H) {
                     val current = tiles[ix][iy]
-                    // Do not overwrite permanent infrastructure (Roads/Walls) with Lot status.
                     if (current != TileType.ROAD && current != TileType.WALL && current != TileType.PROP_BLOCKED && current != TileType.BUILDING_SOLID) {
                         tiles[ix][iy] = TileType.BUILDING_LOT
                     }
@@ -685,11 +695,10 @@ class WorldManager(private val navGrid: NavGrid) {
     }
 
     private fun markFootprint(tiles: Array<Array<TileType>>, s: Structure, tileType: TileType) {
-        // Derive tile coordinates directly from the structure's bottom-left anchor and world dimensions,
-        // ensuring a single source of truth for projection.
+        val spec = s.spec
         val minX = (s.x / Constants.TILE_SIZE).toInt()
-        val minY = ((s.y - s.type.worldHeight) / Constants.TILE_SIZE).toInt()
-        val maxX = ((s.x + s.type.worldWidth - 1f) / Constants.TILE_SIZE).toInt()
+        val minY = ((s.y - spec.worldHeight) / Constants.TILE_SIZE).toInt()
+        val maxX = ((s.x + spec.worldWidth - 1f) / Constants.TILE_SIZE).toInt()
         val maxY = ((s.y - 1f) / Constants.TILE_SIZE).toInt()
 
         for (ix in minX..maxX) {
@@ -701,10 +710,10 @@ class WorldManager(private val navGrid: NavGrid) {
         }
     }
 
-    private fun isAlreadyOccupiedBySameType(tiles: Array<Array<TileType>>, type: StructureType, gx: Int, gy: Int): Boolean {
-        val targetType = when (type) {
-            StructureType.ROAD -> TileType.ROAD
-            StructureType.WALL -> TileType.WALL
+    private fun isAlreadyOccupiedBySameType(tiles: Array<Array<TileType>>, typeId: String, gx: Int, gy: Int): Boolean {
+        val targetType = when (typeId) {
+            "ROAD" -> TileType.ROAD
+            "WALL" -> TileType.WALL
             else -> return false
         }
         if (gx in 0 until Constants.MAP_TILES_W && gy in 0 until Constants.MAP_TILES_H) {
@@ -713,29 +722,30 @@ class WorldManager(private val navGrid: NavGrid) {
         return true
     }
 
-    fun canPlace(type: StructureType, x: Float, y: Float): Boolean {
-        return canPlaceInternal(_worldState.value, type, x, y)
+    fun canPlace(typeId: String, x: Float, y: Float): Boolean {
+        return canPlaceInternal(_worldState.value, typeId, x, y)
     }
 
-    private fun canPlaceInternal(state: WorldState, type: StructureType, x: Float, y: Float, isMoving: Boolean = false): Boolean {
-        val footprintRect = Rect(x, y - type.worldHeight, x + type.worldWidth, y)
+    private fun canPlaceInternal(state: WorldState, typeId: String, x: Float, y: Float, isMoving: Boolean = false): Boolean {
+        val spec = StructureRegistry.get(typeId)
+        val footprintRect = Rect(x, y - spec.worldHeight, x + spec.worldWidth, y)
         if (footprintRect.left < 0 || footprintRect.top < 0 || footprintRect.right > Constants.WORLD_W_PX ||
             footprintRect.bottom > Constants.WORLD_H_PX) return false
 
-        if (type == StructureType.TAVERN && !isMoving) {
-            val tavernCount = state.structures.count { it.type == StructureType.TAVERN }
-            if (tavernCount >= 2) { 
+        if (typeId == "TAVERN" && !isMoving) {
+            val tavernCount = state.structures.count { it.spec.id == "TAVERN" }
+            if (tavernCount >= 2) {
                 return false
             }
         }
 
-        if (type == StructureType.ROAD || type == StructureType.WALL) {
+        if (typeId == "ROAD" || typeId == "WALL") {
             return true
         }
 
         for (s in state.structures) {
-            if (s.type == StructureType.ROAD || s.type == StructureType.WALL) continue
-            val otherFootprint = Rect(s.x, s.y - s.type.worldHeight, s.x + s.type.worldWidth, s.y)
+            if (s.spec.id == "ROAD" || s.spec.id == "WALL") continue
+            val otherFootprint = Rect(s.x, s.y - s.spec.worldHeight, s.x + s.spec.worldWidth, s.y)
             if (footprintRect.overlaps(otherFootprint)) {
                 return false
             }
@@ -766,15 +776,15 @@ class WorldManager(private val navGrid: NavGrid) {
         if (structuresToRemove.isEmpty()) return
 
         for (s in structuresToRemove) {
-            currentState = if (s.type.behavior == PlacementBehavior.STROKE) {
+            currentState = if (s.spec.behavior == PlacementBehavior.STROKE) {
                 unbakeStrokeSegmentFromWorld(currentState, s)
             } else {
                 unbakeStructureFromWorld(currentState, s)
             }
         }
 
-        val roadChanged = structuresToRemove.any { it.type == StructureType.ROAD }
-        val structChanged = structuresToRemove.any { it.type != StructureType.ROAD }
+        val roadChanged = structuresToRemove.any { it.spec.id == "ROAD" }
+        val structChanged = structuresToRemove.any { it.spec.id != "ROAD" }
         val newState = currentState.copy(
             roadRevision = if (roadChanged) currentState.roadRevision + 1 else currentState.roadRevision,
             structureRevision = if (structChanged) currentState.structureRevision + 1 else currentState.structureRevision,
@@ -787,31 +797,30 @@ class WorldManager(private val navGrid: NavGrid) {
     fun removeStructureAt(x: Float, y: Float, isMoving: Boolean = false) {
         val currentState = _worldState.value
         val structure = currentState.structures.find { s ->
-            val footprint = Rect(s.x, s.y - s.type.worldHeight, s.x + s.type.worldWidth, s.y)
+            val footprint = Rect(s.x, s.y - s.spec.worldHeight, s.x + s.spec.worldWidth, s.y)
             footprint.contains(Offset(x, y))
         } ?: return
 
-        val finalState = if (structure.type.behavior == PlacementBehavior.STROKE) {
+        val finalState = if (structure.spec.behavior == PlacementBehavior.STROKE) {
             unbakeStrokeSegmentFromWorld(currentState, structure)
         } else {
             unbakeStructureFromWorld(currentState, structure)
         }
 
         _worldState.value = finalState.copy(
-            roadRevision = if (structure.type == StructureType.ROAD) finalState.roadRevision + 1 else finalState.roadRevision,
-            structureRevision = if (structure.type != StructureType.ROAD) finalState.structureRevision + 1 else finalState.structureRevision,
+            roadRevision = if (structure.spec.id == "ROAD") finalState.roadRevision + 1 else finalState.roadRevision,
+            structureRevision = if (structure.spec.id != "ROAD") finalState.structureRevision + 1 else finalState.structureRevision,
             version = finalState.version + 1
         )
         staticLayerId++
     }
 
 
-    /** The symmetric inverse of bakeStructureToWorld. */
     private fun unbakeStructureFromWorld(currentState: WorldState, structure: Structure): WorldState {
+        val spec = structure.spec
         val newTiles = currentState.copyTiles()
 
-        // Define the same influence area used during baking.
-        val footprintRect = Rect(structure.x, structure.y - structure.type.worldHeight, structure.x + structure.type.worldWidth, structure.y)
+        val footprintRect = Rect(structure.x, structure.y - spec.worldHeight, structure.x + spec.worldWidth, structure.y)
         val influenceRect = Rect(
             left = footprintRect.left - OWNERSHIP_MARGIN_X * Constants.TILE_SIZE,
             top = footprintRect.top - OWNERSHIP_MARGIN_Y * Constants.TILE_SIZE,
@@ -819,10 +828,8 @@ class WorldManager(private val navGrid: NavGrid) {
             bottom = footprintRect.bottom + OWNERSHIP_MARGIN_Y * Constants.TILE_SIZE
         )
 
-        // Mark the entire influence area as dirty for NavGrid update.
         unionDirtyRect(influenceRect)
 
-        // Revert all tiles within the influence area to their natural state.
         val minX = (influenceRect.left / Constants.TILE_SIZE).toInt()
         val minY = (influenceRect.top / Constants.TILE_SIZE).toInt()
         val maxX = (influenceRect.right / Constants.TILE_SIZE).toInt()
@@ -836,61 +843,60 @@ class WorldManager(private val navGrid: NavGrid) {
             }
         }
 
+        val newGrid = clearFromGrid(currentState.structureGrid, structure)
+
         return currentState.copy(
             structures = currentState.structures.filter { it.id != structure.id },
-            tiles = newTiles
+            tiles = newTiles,
+            structureGrid = newGrid
         )
     }
 
-    /** The symmetric inverse of bakeStrokeSegmentFromWorld. */
     private fun unbakeStrokeSegmentFromWorld(currentState: WorldState, structure: Structure): WorldState {
+        val spec = structure.spec
         val newTiles = currentState.copyTiles()
         val gx = (structure.x / Constants.TILE_SIZE).toInt()
-        val gy = ((structure.y - structure.type.worldHeight) / Constants.TILE_SIZE).toInt()
+        val gy = ((structure.y - spec.worldHeight) / Constants.TILE_SIZE).toInt()
 
         if (gx in 0 until Constants.MAP_TILES_W && gy in 0 until Constants.MAP_TILES_H) {
             newTiles[gx][gy] = sampleGrassType(gx, gy)
         }
 
-        unionDirtyRect(Rect(structure.x, structure.y - structure.type.worldHeight, structure.x + structure.type.worldWidth, structure.y))
+        unionDirtyRect(Rect(structure.x, structure.y - spec.worldHeight, structure.x + spec.worldWidth, structure.y))
+
+        val newGrid = clearFromGrid(currentState.structureGrid, structure)
 
         return currentState.copy(
             structures = currentState.structures.filter { it.id != structure.id },
-            tiles = newTiles
+            tiles = newTiles,
+            structureGrid = newGrid
         )
     }
 
     private fun generatePOIs(state: WorldState): List<POI> {
-        val pois = mutableListOf<POI>()
-        for (s in state.structures) {
-            val poiType = when (s.type) {
-                StructureType.HOUSE -> PoiType.HOUSE
-                StructureType.STORE -> PoiType.STORE
-                StructureType.WORKSHOP -> PoiType.WORKSHOP
-                StructureType.CASTLE -> PoiType.CASTLE
-                StructureType.PLAZA -> PoiType.PLAZA
-                StructureType.TAVERN -> PoiType.TAVERN
-                else -> null
-            }
-            if (poiType != null) {
-                pois.add(POI(
+        return state.structures.mapNotNull { s ->
+            try {
+                val poiType = PoiType.valueOf(s.spec.id)
+                POI(
                     s.id,
                     poiType,
-                    SerializableOffset(s.x + s.type.worldWidth / 2, s.y - s.type.worldHeight / 2) // Center point
-                ))
+                    SerializableOffset(s.x + s.spec.worldWidth / 2, s.y - s.spec.worldHeight / 2) // Center point
+                )
+            } catch (e: IllegalArgumentException) {
+                null // Not a POI
             }
         }
-        return pois
     }
 
     private fun validateInvariants() {
         val state = _worldState.value
         state.structures.forEach { s ->
-            val expectedTile = if (s.type == StructureType.PLAZA) TileType.PLAZA else TileType.BUILDING_SOLID
+            val spec = s.spec
+            val expectedTile = if (spec.id == "PLAZA") TileType.PLAZA else TileType.BUILDING_SOLID
 
-            if (s.type != StructureType.ROAD && s.type != StructureType.WALL) {
+            if (spec.id != "ROAD" && spec.id != "WALL") {
                 val gx = (s.x / Constants.TILE_SIZE).toInt()
-                val gy = ((s.y - s.type.worldHeight) / Constants.TILE_SIZE).toInt()
+                val gy = ((s.y - spec.worldHeight) / Constants.TILE_SIZE).toInt()
                 if (gx >= 0 && gx < Constants.MAP_TILES_W && gy >= 0 && gy < Constants.MAP_TILES_H) {
                     if (state.tiles[gx][gy] != expectedTile && state.tiles[gx][gy] != TileType.BUILDING_FOOTPRINT) {
                         Log.e("WorldManager", "Invariant broken: Structure ${s.id} at $gx,$gy not on footprint (expected $expectedTile, got ${state.tiles[gx][gy]})")

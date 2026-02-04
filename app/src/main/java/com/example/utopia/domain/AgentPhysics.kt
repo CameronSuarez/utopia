@@ -4,9 +4,9 @@ import androidx.compose.ui.geometry.Offset
 import com.example.utopia.data.models.AgentIntent
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.AgentState
+import com.example.utopia.data.models.InventoryItem
 import com.example.utopia.data.models.PoiType
 import com.example.utopia.data.models.SerializableOffset
-import com.example.utopia.data.models.StructureType
 import com.example.utopia.data.models.TileType
 import com.example.utopia.data.models.WorldState
 import com.example.utopia.util.Constants
@@ -14,20 +14,8 @@ import kotlin.math.abs
 import kotlin.math.sqrt
 import kotlin.random.Random
 
-/**
- * DESIGN PRINCIPLE: THE DUMB EXECUTOR
- *
- * This system is responsible ONLY for the mechanics of movement, collision, and animation.
- * It does NOT decide where agents go or why.
- *
- * Responsibilities:
- * 1. Physics: Solving collisions and sliding against obstacles.
- * 2. Animation: Updating visual state based on movement.
- * 3. Separation: Keeping agents from overlapping.
- */
-
-private const val DAMPING = 0.985f // Dimensionless damping factor (0.98-0.99 is ideal for 60fps)
-private const val STRIDE_PX = 32f // The distance covered in one full 4-frame animation cycle.
+private const val DAMPING = 0.985f
+private const val STRIDE_PX = 32f
 
 internal fun updateAgents(
     agents: List<AgentRuntime>,
@@ -48,7 +36,6 @@ private fun updateAgentTick(
     deltaTimeMs: Long,
     nowMs: Long
 ): AgentRuntime {
-    // Agents in the SOCIALIZING state are completely stationary, managed by the SocialSystem.
     if (agent.state == AgentState.SOCIALIZING) {
         return agent.copy(
             velocity = SerializableOffset(0f, 0f),
@@ -56,7 +43,6 @@ private fun updateAgentTick(
         )
     }
 
-    // Agents in these states are stationary, but can "break out" if their intent changes.
     if (agent.state == AgentState.SLEEPING || agent.state == AgentState.WORKING) {
         val intentSatisfied = isIntentSatisfied(agent, worldState)
         if (intentSatisfied) {
@@ -70,63 +56,61 @@ private fun updateAgentTick(
 
     val deltaSeconds = deltaTimeMs / 1000f
 
-    // 1. CALCULATE FORCES (Time-independent)
     val intentForce = calculateIntentForce(agent, worldState)
     val separationForce = calculateSeparationForce(agent, worldState.agents)
     val wanderForce = calculateWanderForce(agent)
 
-    // 2. COMBINE AND CLAMP FORCES (Step 3)
     val totalForce = intentForce.plus(separationForce).plus(wanderForce)
 
-    // Scale user constants (Tiles -> Pixels) to match world units
     val scaledMaxForce = Constants.MAX_FORCE * Constants.TILE_SIZE
     val clampedForce = totalForce.clampMagnitude(scaledMaxForce)
 
-    // 3. INTEGRATE ACCELERATION -> VELOCITY (dt ONCE)
     val oldVelocity = agent.velocity.toOffset()
     var newVelocity = oldVelocity.plus(clampedForce.times(deltaSeconds))
 
-    // 4. APPLY DAMPING (dimensionless)
     newVelocity = newVelocity.times(DAMPING)
 
-    // 5. SPEED LIMIT (Step 4 - CRITICAL)
     val speedMult = if (worldState.tiles.getOrNull(agent.gridX)?.getOrNull(agent.gridY) == TileType.ROAD)
         Constants.ON_ROAD_SPEED_MULT else Constants.OFF_ROAD_SPEED_MULT
 
     val scaledMaxSpeed = Constants.MAX_SPEED * Constants.TILE_SIZE * speedMult
     newVelocity = newVelocity.clampMagnitude(scaledMaxSpeed)
 
-    // 6. INTEGRATE VELOCITY -> POSITION (dt ONCE)
     val step = newVelocity.times(deltaSeconds)
     val newPosition = tryMove(agent, step.x, step.y, navGrid)
 
-    // 7. UPDATE ANIMATION STATE
     val moveSpeedPxPerSec = newVelocity.getDistance()
     val nextAnimAcc = agent.animAcc + (moveSpeedPxPerSec / STRIDE_PX) * deltaSeconds
     val nextAnimFrame = (nextAnimAcc * 4f).toInt() and 3
 
     val nextFacingLeft = if (abs(step.x) > 0.01f) step.x < 0 else agent.facingLeft
 
-    // 8. DETERMINE NEXT STATE
     val structure = worldState.getInfluencingStructure(agent.position.toOffset())
-    val intentSatisfiedState = when (agent.currentIntent) {
-        AgentIntent.SeekSleep -> if (structure?.type?.providesSleep == true) AgentState.SLEEPING else null
-        AgentIntent.SeekFun -> if (structure?.type?.providesFun == true) AgentState.HAVING_FUN else null
+    val intentSatisfiedState = when (val intent = agent.currentIntent) {
+        AgentIntent.SeekSleep -> if (structure?.spec?.providesSleep == true) AgentState.SLEEPING else null
+        AgentIntent.SeekFun -> if (structure?.spec?.providesFun == true) AgentState.HAVING_FUN else null
         AgentIntent.SeekStability -> {
-            when (structure?.type) {
-                StructureType.STORE -> AgentState.TRADING
-                StructureType.WORKSHOP -> AgentState.WORKING
+            when (structure?.spec?.id) {
+                "STORE" -> AgentState.TRADING
+                "WORKSHOP" -> AgentState.WORKING
+                "LUMBERJACK_HUT" -> AgentState.WORKING
                 else -> null
             }
         }
         AgentIntent.SeekStimulation -> {
             when {
-                structure?.type == StructureType.STORE -> AgentState.TRADING
-                structure?.type == StructureType.WORKSHOP -> AgentState.WORKING
-                worldState.getTileAtWorld(agent.position.toOffset()) == TileType.ROAD -> AgentState.WORKING // Simplified: Road work is just 'WORKING'
+                structure?.spec?.id == "STORE" -> AgentState.TRADING
+                structure?.spec?.id == "WORKSHOP" -> AgentState.WORKING
+                structure?.spec?.id == "LUMBERJACK_HUT" -> AgentState.WORKING
+                structure?.isComplete == false -> AgentState.WORKING
+                worldState.getTileAtWorld(agent.position.toOffset()) == TileType.ROAD -> AgentState.WORKING
                 else -> null
             }
         }
+        is AgentIntent.Construct -> if (structure?.id == intent.targetId) AgentState.WORKING else null
+        is AgentIntent.GetResource -> if (structure?.id == intent.targetId) AgentState.WORKING else null
+        is AgentIntent.StoreResource -> if (structure?.id == intent.targetId) AgentState.WORKING else null
+        AgentIntent.Work -> if (structure?.id == agent.workplaceId) AgentState.WORKING else null
         else -> null
     }
 
@@ -147,14 +131,29 @@ private fun updateAgentTick(
 
 private fun isIntentSatisfied(agent: AgentRuntime, worldState: WorldState): Boolean {
     val structure = worldState.getInfluencingStructure(agent.position.toOffset())
-    return when (agent.currentIntent) {
-        AgentIntent.SeekSleep -> structure?.type?.providesSleep == true
-        AgentIntent.SeekFun -> structure?.type?.providesFun == true
-        AgentIntent.SeekStability -> structure?.type?.providesStability == true
+    return when (val intent = agent.currentIntent) {
+        AgentIntent.Work -> structure?.id == agent.workplaceId
+        AgentIntent.SeekSleep -> {
+            if (agent.homeId != null) {
+                structure?.id == agent.homeId
+            } else {
+                structure?.spec?.providesSleep == true
+            }
+        }
+        AgentIntent.SeekFun -> structure?.spec?.providesFun == true
+        AgentIntent.SeekStability -> structure?.spec?.id == "STORE" || structure?.spec?.id == "WORKSHOP" || structure?.spec?.id == "LUMBERJACK_HUT"
         AgentIntent.SeekStimulation -> {
             val tile = worldState.getTileAtWorld(agent.position.toOffset())
-            structure?.type?.providesStimulation == true || tile == TileType.ROAD
+            structure?.spec?.providesStimulation == true ||
+                    structure?.spec?.id == "LUMBERJACK_HUT" ||
+                    structure?.isComplete == false ||
+                    tile == TileType.ROAD
         }
+        is AgentIntent.GetResource, is AgentIntent.StoreResource -> {
+            val targetId = if (intent is AgentIntent.GetResource) intent.targetId else (intent as AgentIntent.StoreResource).targetId
+            structure?.id == targetId
+        }
+        is AgentIntent.Construct -> structure?.id == intent.targetId
         else -> false
     }
 }
@@ -167,13 +166,29 @@ private fun calculateIntentForce(agent: AgentRuntime, worldState: WorldState): O
 
     val pos = agent.position.toOffset()
 
+    val targetStructure = when (intent) {
+        is AgentIntent.GetResource -> worldState.structures.find { it.id == intent.targetId }
+        is AgentIntent.StoreResource -> worldState.structures.find { it.id == intent.targetId }
+        is AgentIntent.Construct -> worldState.structures.find { it.id == intent.targetId }
+        AgentIntent.Work -> worldState.structures.find { it.id == agent.workplaceId }
+        AgentIntent.SeekSleep -> agent.homeId?.let { homeId -> worldState.structures.find { it.id == homeId } }
+        else -> null
+    }
+
+    if (targetStructure != null) {
+        val targetPos = Offset(targetStructure.x + targetStructure.spec.worldWidth / 2, targetStructure.y - targetStructure.spec.worldHeight / 2)
+        val toTarget = targetPos.minus(pos)
+        val dist = toTarget.getDistance()
+        return if (dist > 5f) toTarget.div(dist).times(Constants.INTENT_FORCE * Constants.TILE_SIZE) else Offset.Zero
+    }
+
     val targetPoi = worldState.pois
         .filter { poi ->
             when (intent) {
                 AgentIntent.SeekSleep -> poi.type == PoiType.HOUSE || poi.type == PoiType.CASTLE
                 AgentIntent.SeekFun -> poi.type == PoiType.TAVERN || poi.type == PoiType.PLAZA
-                AgentIntent.SeekStimulation -> poi.type == PoiType.STORE || poi.type == PoiType.WORKSHOP || poi.type == PoiType.CASTLE
-                AgentIntent.SeekStability -> poi.type == PoiType.STORE || poi.type == PoiType.WORKSHOP
+                AgentIntent.SeekStimulation -> poi.type == PoiType.STORE || poi.type == PoiType.WORKSHOP || poi.type == PoiType.CASTLE || poi.type == PoiType.LUMBERJACK_HUT
+                AgentIntent.SeekStability -> poi.type == PoiType.STORE || poi.type == PoiType.WORKSHOP || poi.type == PoiType.LUMBERJACK_HUT
                 else -> false
             }
         }
@@ -217,7 +232,6 @@ private fun calculateWanderForce(agent: AgentRuntime): Offset {
 
     if (!isIdleWandering && !isFunWandering && !isTradingWandering) return Offset.Zero
 
-    // For idle wandering, use the original smooth behavior
     if (isIdleWandering) {
         val seed = agent.id.hashCode().toLong() + (System.currentTimeMillis() / 2000)
         val rng = Random(seed)
@@ -225,17 +239,15 @@ private fun calculateWanderForce(agent: AgentRuntime): Offset {
             .times(Constants.WANDER_FORCE * Constants.TILE_SIZE)
     }
 
-    // For "fun" or "trading" wandering, implement stop-and-go logic
     if (isFunWandering || isTradingWandering) {
-        val timeBlock = System.currentTimeMillis() / 1500L // ~1.5 second blocks
+        val timeBlock = System.currentTimeMillis() / 1500L
         val seed = agent.id.hashCode().toLong() + timeBlock
         val rng = Random(seed)
-        val shouldMove = rng.nextFloat() < 0.33f // Move about 1/3 of the time
+        val shouldMove = rng.nextFloat() < 0.33f
 
         return if (!shouldMove) {
-            Offset.Zero // Pause phase
+            Offset.Zero
         } else {
-            // Move phase
             Offset(rng.nextFloat() * 2 - 1, rng.nextFloat() * 2 - 1)
                 .times(Constants.WANDER_FORCE * Constants.TILE_SIZE)
         }
@@ -259,8 +271,6 @@ private fun tryMove(
     return if (navGrid.isWalkable(targetGX, targetGY)) {
         SerializableOffset(targetX, targetY)
     } else {
-        // --- Obstacle Avoidance (Force field logic) ---
-        // If the direct path is blocked, we try to slide along the obstacle
         val currentGX = (agent.x / Constants.TILE_SIZE).toInt()
         val currentGY = (agent.y / Constants.TILE_SIZE).toInt()
         
@@ -276,14 +286,13 @@ private fun tryMove(
             finalY = targetY
         }
         
-        // If still blocked on both axes (corner case), check if there's a nearby walkable tile to "bounce" towards
         if (finalX == agent.x && finalY == agent.y) {
             val nudge = Pathfinding.nudgeOutOfObstacle(targetGX, targetGY, navGrid)
             if (nudge != null) {
                 val nudgeX = (nudge.first + 0.5f) * Constants.TILE_SIZE
                 val nudgeY = (nudge.second + 0.5f) * Constants.TILE_SIZE
                 val toNudge = Offset(nudgeX - agent.x, nudgeY - agent.y)
-                val step = toNudge.div(toNudge.getDistance()).times(2f) // Small step toward opening
+                val step = toNudge.div(toNudge.getDistance()).times(2f)
                 return SerializableOffset(agent.x + step.x, agent.y + step.y)
             }
         }

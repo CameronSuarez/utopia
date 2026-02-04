@@ -15,9 +15,6 @@ import com.example.utopia.util.Constants
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
-/**
- * Orchestrates the rendering pipeline by iterating through registered layers.
- */
 fun DrawScope.drawCity(
     context: RenderContext,
     snapshot: SceneSnapshot,
@@ -50,9 +47,9 @@ internal fun DrawScope.drawNavGridOverlay(navGrid: NavGrid, camera: Camera2D) {
         for (y in startY until endY) {
             val tileValue = navGrid.grid[x][y]
             val color = when (tileValue.toInt()) {
-                0 -> Color.Red.copy(alpha = 0.4f)       // Blocked
-                1 -> Color.Green.copy(alpha = 0.4f)     // Walkable
-                2 -> Color.Blue.copy(alpha = 0.4f)      // Road
+                0 -> Color.Red.copy(alpha = 0.4f)
+                1 -> Color.Green.copy(alpha = 0.4f)
+                2 -> Color.Blue.copy(alpha = 0.4f)
                 else -> Color.Transparent
             }
             if (color != Color.Transparent) {
@@ -84,14 +81,11 @@ internal data class RenderItem(
 internal fun agentFootpointY(agent: AgentRuntime): Float = agent.y + Constants.TILE_SIZE
 
 internal fun structureBaselineY(structure: Structure): Float =
-    structure.y + structure.type.baselineWorld
+    structure.y + structure.spec.baselineWorld
 
 internal fun propBaselineY(prop: PropInstance): Float =
     prop.anchorY
 
-/**
- * Extension for drawing the cached road bitmap with camera transforms.
- */
 internal fun DrawScope.drawRoadBitmap(bitmap: ImageBitmap, camera: Camera2D) {
     withTransform({
         translate(camera.offset.x, camera.offset.y)
@@ -101,9 +95,6 @@ internal fun DrawScope.drawRoadBitmap(bitmap: ImageBitmap, camera: Camera2D) {
     }
 }
 
-/**
- * Draws the live road tiles (brushing preview) using the road asset.
- */
 internal fun DrawScope.drawLiveRoads(tiles: List<UtilIntOffset>, camera: Camera2D, roadAsset: ImageBitmap) {
     val tileSize = Constants.TILE_SIZE
     val dstSize = androidx.compose.ui.unit.IntSize(tileSize.roundToInt(), tileSize.roundToInt())

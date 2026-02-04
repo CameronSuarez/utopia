@@ -18,17 +18,16 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.example.utopia.R
+import com.example.utopia.data.StructureRegistry
 import com.example.utopia.data.models.*
 import com.example.utopia.debug.AgentLabelOverlay
+import com.example.utopia.util.Constants
 
-/**
- * The high-level orchestrator for the City screen.
- * Handles UI wiring, input plumbing, and delegates rendering to specific sub-systems.
- */
 @Composable
 fun CityScreen(viewModel: GameViewModel) {
     Log.d("StartupHeartbeat", "CityScreen - Recomposing")
@@ -39,7 +38,9 @@ fun CityScreen(viewModel: GameViewModel) {
     val latestCamera by rememberUpdatedState(camera)
     val latestPlacementState by rememberUpdatedState(pc.state)
 
-    // Load Assets
+    val globalResources by viewModel.globalResources.collectAsState()
+    val selectedStructureInfo by viewModel.selectedStructureInfo.collectAsState()
+
     val grass1 = ImageBitmap.imageResource(R.drawable.grass1)
     val grass2 = ImageBitmap.imageResource(R.drawable.grass2)
     val grass3 = ImageBitmap.imageResource(R.drawable.grass3)
@@ -49,7 +50,6 @@ fun CityScreen(viewModel: GameViewModel) {
     val grassBitmaps = listOf(grass1, grass2, grass3, grass4, grass5, grass6)
     val roadBitmapAsset = ImageBitmap.imageResource(R.drawable.road)
 
-    // Caches & Asset Management
     val groundBitmap = rememberGroundCache(worldState, grassBitmaps)
     val roadBitmap = rememberRoadCache(worldState, roadBitmapAsset)
     val agentNameById = remember(worldState.agents) { worldState.agents.associate { it.id to it.name } }
@@ -64,25 +64,27 @@ fun CityScreen(viewModel: GameViewModel) {
         }
     }
 
-    // Structure Assets
     val houseBitmap = ImageBitmap.imageResource(R.drawable.house1)
     val tavernBitmap = ImageBitmap.imageResource(R.drawable.tavern)
     val workshopBitmap = ImageBitmap.imageResource(R.drawable.workshop)
     val storeBitmap = ImageBitmap.imageResource(R.drawable.store)
     val plazaBitmap = ImageBitmap.imageResource(R.drawable.plaza)
+    val constructionSiteBitmap = ImageBitmap.imageResource(R.drawable.construction_site)
+    val lumberjackHutBitmap = ImageBitmap.imageResource(R.drawable.lumberjack_hut)
 
-    val structureAssets = remember(houseLabelPaint, houseBitmap, tavernBitmap, workshopBitmap, storeBitmap, plazaBitmap) {
+    val structureAssets = remember(houseLabelPaint, houseBitmap, tavernBitmap, workshopBitmap, storeBitmap, plazaBitmap, constructionSiteBitmap, lumberjackHutBitmap) {
         StructureAssets(
             houseLabelPaint = houseLabelPaint,
             houseBitmap = houseBitmap,
             tavernBitmap = tavernBitmap,
             workshopBitmap = workshopBitmap,
             storeBitmap = storeBitmap,
-            plazaBitmap = plazaBitmap
+            plazaBitmap = plazaBitmap,
+            constructionSiteBitmap = constructionSiteBitmap,
+            lumberjackHutBitmap = lumberjackHutBitmap
         )
     }
 
-    // Prop Assets
     val treeBitmap = ImageBitmap.imageResource(R.drawable.tree)
 
     val propAssets = remember(treeBitmap) {
@@ -111,7 +113,6 @@ fun CityScreen(viewModel: GameViewModel) {
             .fillMaxSize()
             .background(Color(0xFF333333))
     ) {
-        // Map Interaction Layer
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -126,7 +127,7 @@ fun CityScreen(viewModel: GameViewModel) {
                             when (event.type) {
                                 PointerEventType.Press -> {
                                     if (pc.state != PlacementState.IDLE) {
-                                        pc.beginPointer(pc.activeTool ?: StructureType.ROAD, position, viewModel.cameraOffset)
+                                        pc.beginPointer(pc.activeTool ?: StructureRegistry.get("ROAD"), position, viewModel.cameraOffset)
                                         change.consume()
                                     }
                                 }
@@ -153,6 +154,20 @@ fun CityScreen(viewModel: GameViewModel) {
                                 val worldPos = screenToWorld(offset, latestCamera)
                                 val stateSnapshot = latestWorldState
 
+                                val gx = (worldPos.x / Constants.TILE_SIZE).toInt()
+                                val gy = (worldPos.y / Constants.TILE_SIZE).toInt()
+
+                                if (gx !in 0 until Constants.MAP_TILES_W || gy !in 0 until Constants.MAP_TILES_H) {
+                                    viewModel.clearSelection()
+                                    return@detectTapGestures
+                                }
+
+                                val structureId = stateSnapshot.structureGrid[gx][gy]
+                                if (structureId != null) {
+                                    viewModel.selectStructure(structureId)
+                                    return@detectTapGestures
+                                }
+
                                 val hitAgent = stateSnapshot.agents
                                     .asSequence()
                                     .filter { agentHitBoundsWorld(it).contains(worldPos) }
@@ -162,17 +177,8 @@ fun CityScreen(viewModel: GameViewModel) {
                                     viewModel.selectAgent(hitAgent.id)
                                     return@detectTapGestures
                                 }
-
-                                val hitBuilding = stateSnapshot.structures
-                                    .asSequence()
-                                    .filter { structureHitBoundsWorld(it).contains(worldPos) }
-                                    .maxByOrNull { it.y + it.type.baselineWorld }
-
-                                if (hitBuilding != null) {
-                                    viewModel.selectBuilding(hitBuilding.id)
-                                } else {
-                                    viewModel.clearSelection()
-                                }
+                                
+                                viewModel.clearSelection()
                             }
                         },
                         onLongPress = { offset ->
@@ -180,7 +186,7 @@ fun CityScreen(viewModel: GameViewModel) {
                                 val worldPos = screenToWorld(offset, latestCamera)
                                 val structure = latestWorldState.structures
                                     .filter { structureHitBoundsWorld(it).contains(worldPos) }
-                                    .maxByOrNull { it.y + it.type.baselineWorld }
+                                    .maxByOrNull { it.y + it.spec.baselineWorld }
                                 if (structure != null) {
                                     pc.startMove(structure)
                                 }
@@ -189,7 +195,6 @@ fun CityScreen(viewModel: GameViewModel) {
                     )
                 }
         ) {
-            // Main World Rendering Surface
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
@@ -220,10 +225,8 @@ fun CityScreen(viewModel: GameViewModel) {
                     visibleWorldObjectsYSorted = buildVisibleWorldObjects(renderContext, SceneSnapshot(worldState), size)
                 )
 
-                // Simplified Pipeline Call
                 drawCity(renderContext, sceneSnapshot)
 
-                // Debug Layers (Still separate for now, but context-ready)
                 drawDebugLayers(
                     viewModel = viewModel,
                     agents = worldState.agents,
@@ -240,7 +243,6 @@ fun CityScreen(viewModel: GameViewModel) {
 
             SelectionOverlay(viewModel)
 
-            // Agent Label Overlay
             if (viewModel.showAgentLabels) {
                 AgentLabelOverlay(
                     agents = worldState.agents,
@@ -249,7 +251,6 @@ fun CityScreen(viewModel: GameViewModel) {
             }
         }
 
-        // HUD Layer (Stats, Tools, Overlays)
         val brightness = when (viewModel.currentPhaseName) {
             "Morning", "Evening" -> 0.9f
             "Afternoon" -> 1.0f
@@ -276,7 +277,10 @@ fun CityScreen(viewModel: GameViewModel) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
-                TownStatsStrip(viewModel, onSocialLedgerToggle = {})
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TownStatsStrip(viewModel, onSocialLedgerToggle = {})
+                    ResourceHud(resources = globalResources)
+                }
                 DebugPanel(viewModel = viewModel, modifier = Modifier.padding(end = 8.dp))
                 TrashCan(pc)
             }
@@ -301,8 +305,95 @@ fun CityScreen(viewModel: GameViewModel) {
                 )
             }
         }
+
+        selectedStructureInfo?.let { info ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(9f),
+                contentAlignment = Alignment.TopEnd
+            ) {
+                StructureProfilePanel(
+                    info = info,
+                    onClose = { viewModel.clearSelection() }
+                )
+            }
+        }
     }
 }
+
+@Composable
+fun ResourceHud(resources: Map<ResourceType, Int>) {
+    Surface(
+        color = Color.Black.copy(alpha = 0.5f),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ResourceType.entries.forEach { type ->
+                Text(
+                    text = "${type.name}: ${resources[type] ?: 0}",
+                    color = Color.White,
+                    fontSize = 12.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun StructureProfilePanel(info: SelectedStructureInfo, onClose: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .padding(16.dp)
+            .width(280.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = info.structure.spec.id, style = MaterialTheme.typography.titleMedium)
+                Button(onClick = onClose) {
+                    Text("X")
+                }
+            }
+            Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+            when (info) {
+                is SelectedStructureInfo.Residence -> {
+                    Text("Residents:", fontWeight = FontWeight.Bold)
+                    info.residents.forEach { Text(it) }
+                }
+                is SelectedStructureInfo.Workplace -> {
+                    Text("Inventory:", fontWeight = FontWeight.Bold)
+                    info.inventory.forEach { (resource, count) ->
+                        Text("${resource.name}: $count")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Workers:", fontWeight = FontWeight.Bold)
+                    info.workers.forEach { Text(it) }
+                }
+                is SelectedStructureInfo.ConstructionSite -> {
+                    Text("Under Construction", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Required Resources:", fontWeight = FontWeight.Bold)
+                    info.required.forEach { (resource, count) ->
+                        Text("${resource.name}: ${info.delivered[resource] ?: 0} / $count")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Builders:", fontWeight = FontWeight.Bold)
+                    info.workers.forEach { Text(it) }
+                }
+            }
+        }
+    }
+}
+
 
 @Composable
 private fun PlacementStatus(pc: PlacementController) {

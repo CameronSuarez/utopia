@@ -17,7 +17,7 @@ import com.example.utopia.data.models.Structure
 @Composable
 fun SelectionOverlay(viewModel: GameViewModel) {
     val worldState = viewModel.worldManager.worldState.value
-    val buildingId = viewModel.selectedBuildingId
+    val buildingId = viewModel.selectedStructureId
     val camera = Camera2D(viewModel.cameraOffset)
 
     if (buildingId != null) {
@@ -37,12 +37,12 @@ fun BuildingInfo(building: Structure, screenPos: Offset) {
         modifier = Modifier.offset(pxToDp(screenPos.x), pxToDp(screenPos.y - 60f))
     ) {
         Column(modifier = Modifier.padding(8.dp)) {
-            Text(building.customName ?: building.type.name, color = Color.White, fontSize = 12.sp)
+            Text(building.customName ?: building.spec.id, color = Color.White, fontSize = 12.sp)
             // REMOVED: Job slot and worker display logic
 
-            if (building.type.capacity > 0) {
+            if (building.spec.capacity > 0) {
                 Row {
-                    repeat(building.type.capacity) { i ->
+                    repeat(building.spec.capacity) { i ->
                         Text(if (i < building.residents.size) "🏠" else "⚪", fontSize = 14.sp)
                     }
                 }

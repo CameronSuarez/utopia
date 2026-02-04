@@ -7,17 +7,32 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.utopia.data.models.ResourceType
+import com.example.utopia.data.models.Structure
 import com.example.utopia.domain.NavGrid
 import com.example.utopia.domain.Pathfinding
 import com.example.utopia.domain.WorldManager
 import com.example.utopia.util.Constants
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+
+sealed interface SelectedStructureInfo {
+    val structure: Structure
+    data class Residence(override val structure: Structure, val residents: List<String>) : SelectedStructureInfo
+    data class Workplace(override val structure: Structure, val inventory: Map<ResourceType, Int>, val workers: List<String>) : SelectedStructureInfo
+    data class ConstructionSite(override val structure: Structure, val required: Map<ResourceType, Int>, val delivered: Map<ResourceType, Int>, val workers: List<String>) : SelectedStructureInfo
+}
+
 
 class GameViewModel : ViewModel() {
     val navGrid = NavGrid()
@@ -31,7 +46,51 @@ class GameViewModel : ViewModel() {
 
     // Selection State
     var selectedAgentId by mutableStateOf<String?>(null)
-    var selectedBuildingId by mutableStateOf<String?>(null)
+    var selectedStructureId by mutableStateOf<String?>(null)
+
+    val globalResources: StateFlow<Map<ResourceType, Int>> = worldManager.worldState.let { state ->
+        snapshotFlow { state.value }
+            .map { worldState ->
+                val totals = mutableMapOf<ResourceType, Int>()
+                worldState.structures.forEach { structure ->
+                    structure.inventory.forEach { (resource, count) ->
+                        totals[resource] = (totals[resource] ?: 0) + count
+                    }
+                }
+                worldState.agents.forEach { agent ->
+                    agent.carriedItem?.let { item ->
+                        totals[item.type] = (totals[item.type] ?: 0) + item.quantity
+                    }
+                }
+                totals
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+    }
+
+    val selectedStructureInfo: StateFlow<SelectedStructureInfo?> = worldManager.worldState.let { state ->
+        snapshotFlow { selectedStructureId to state.value }
+            .map { (id, worldState) ->
+                val structure = worldState.structures.find { it.id == id } ?: return@map null
+                val workers = worldState.agents.filter { it.workplaceId == id }.map { it.name }
+
+                when {
+                    !structure.isComplete -> {
+                        val delivered = structure.inventory
+                        val required = structure.spec.buildCost
+                        SelectedStructureInfo.ConstructionSite(structure, required, delivered, workers)
+                    }
+                    structure.spec.providesSleep -> {
+                        val residents = worldState.agents.filter { it.homeId == id }.map { it.name }
+                        SelectedStructureInfo.Residence(structure, residents)
+                    }
+                    structure.spec.produces.isNotEmpty() || structure.spec.consumes.isNotEmpty() -> {
+                        SelectedStructureInfo.Workplace(structure, structure.inventory, workers)
+                    }
+                    else -> null
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    }
 
     // Town Stats
     var totalPopulation by mutableIntStateOf(0)
@@ -158,16 +217,16 @@ class GameViewModel : ViewModel() {
 
     fun selectAgent(id: String) {
         selectedAgentId = id
-        selectedBuildingId = null
+        selectedStructureId = null
     }
 
-    fun selectBuilding(id: String) {
-        selectedBuildingId = id
+    fun selectStructure(id: String) {
+        selectedStructureId = id
         selectedAgentId = null
     }
 
     fun clearSelection() {
         selectedAgentId = null
-        selectedBuildingId = null
+        selectedStructureId = null
     }
 }

@@ -1,22 +1,17 @@
 package com.example.utopia.ui
 
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.PropInstance
 import com.example.utopia.data.models.Structure
-import com.example.utopia.data.models.StructureType
 import com.example.utopia.domain.NavGrid
 import com.example.utopia.util.Constants
 import kotlin.math.floor
 
 private const val SPATIAL_CELL_SIZE = 256f
 
-/**
- * Spatial index for fast culling of world objects.
- */
 class SnapshotSpatialIndex(private val cellSize: Float) {
     private val grid = mutableMapOf<Pair<Int, Int>, MutableList<SpatialEntry>>()
 
@@ -55,10 +50,6 @@ class SnapshotSpatialIndex(private val cellSize: Float) {
     }
 }
 
-/**
- * Builds a spatial index and produces a sorted list of visible render items.
- * Phase B & C of the architectural improvement.
- */
 fun buildVisibleWorldObjects(
     context: RenderContext,
     snapshot: SceneSnapshot,
@@ -69,29 +60,27 @@ fun buildVisibleWorldObjects(
     
     val index = SnapshotSpatialIndex(SPATIAL_CELL_SIZE)
     
-    // 1. Insert Structures
     worldState.structures.forEach { structure ->
-        if (structure.type != StructureType.ROAD) {
+        val spec = structure.spec
+        if (spec.id != "ROAD") {
             val bounds = Rect(
                 structure.x,
-                structure.y - structure.type.worldHeight,
-                structure.x + structure.type.worldWidth,
-                structure.y + structure.type.worldHeight // Conservative bottom
+                structure.y - spec.worldHeight,
+                structure.x + spec.worldWidth,
+                structure.y + spec.worldHeight
             )
             val item = RenderItemRef(
                 kind = RenderItemKind.STRUCTURE,
                 item = structure,
                 depthY = structureBaselineY(structure),
-                depthX = structure.x + structure.type.worldWidth / 2f,
+                depthX = structure.x + spec.worldWidth / 2f,
                 tieBreak = structure.id.hashCode()
             )
             index.insert(item, bounds)
         }
     }
 
-    // 2. Insert Props
     worldState.props.forEach { prop ->
-        // Conservative tree bounds (approx 6 tiles wide)
         val w = 6f * Constants.TILE_SIZE
         val h = 8f * Constants.TILE_SIZE
         val bounds = Rect(
@@ -110,7 +99,6 @@ fun buildVisibleWorldObjects(
         index.insert(item, bounds)
     }
 
-    // 3. Insert Agents
     worldState.agents.forEach { agent ->
         val bounds = agentHitBoundsWorld(agent)
         val item = RenderItemRef(
@@ -132,7 +120,6 @@ fun buildVisibleWorldObjects(
         index.insert(fxItem, bounds)
     }
 
-    // 4. Query Viewport
     val worldL = -camera.offset.x / camera.zoom
     val worldT = -camera.offset.y / camera.zoom
     val worldR = worldL + (viewportSize.width / camera.zoom)
@@ -153,7 +140,7 @@ class RoadLayer : RenderLayer {
     override fun DrawScope.draw(context: RenderContext, snapshot: SceneSnapshot) {
         context.roadBitmap?.let { drawRoadBitmap(it, context.camera) }
         if (snapshot.liveRoadTiles.isNotEmpty()) {
-            drawLiveRoads(snapshot.liveRoadTiles, context.camera, context.roadAsset)
+            drawLiveRoads(snapshot.liveRoadTiles, context.camera)
         }
     }
 }

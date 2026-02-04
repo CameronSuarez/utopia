@@ -1,7 +1,6 @@
 package com.example.utopia.ui
 
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -10,11 +9,10 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.example.utopia.data.models.Structure
-import com.example.utopia.data.models.StructureType
 import com.example.utopia.util.Constants
 import com.example.utopia.util.WorldGridMath
-import com.example.utopia.util.IntOffset as UtopiaIntOffset
 import java.util.Random
+import com.example.utopia.util.IntOffset as UtopiaIntOffset
 
 data class StructureAssets(
     val houseLabelPaint: android.graphics.Paint,
@@ -22,50 +20,48 @@ data class StructureAssets(
     val tavernBitmap: ImageBitmap,
     val workshopBitmap: ImageBitmap,
     val storeBitmap: ImageBitmap,
-    val plazaBitmap: ImageBitmap
+    val plazaBitmap: ImageBitmap,
+    val constructionSiteBitmap: ImageBitmap,
+    val lumberjackHutBitmap: ImageBitmap
 )
 
-/**
- * Renders a single structure.
- *
- * ANCHOR CONTRACT: This function assumes the `structure.x`, `structure.y` coordinates
- * represent the BOTTOM-LEFT anchor of the structure's sprite in world space.
- * All rendering calculations are performed relative to this point.
- */
 fun DrawScope.drawStructureItem(
     structure: Structure,
     camera: Camera2D,
     assets: StructureAssets,
     agentNameById: Map<String, String>
 ) {
-    // Authoritative dimensions from the data model
-    val worldW = structure.type.worldWidth
-    val worldH = structure.type.worldHeight
+    val spec = structure.spec
+    val worldW = spec.worldWidth
+    val worldH = spec.worldHeight
 
-    // ANCHOR CONVERSION: The structure's (x,y) is the bottom-left. To draw, we need the top-left.
     val worldDrawX = structure.x
     val worldDrawY = structure.y - worldH
 
-    // Convert world coordinates and size to screen space for culling and drawing.
     val screenPos = worldToScreen(Offset(worldDrawX, worldDrawY), camera)
     val screenSize = worldSizeToScreen(Size(worldW, worldH), camera)
 
-    // Culling
     if (screenPos.x + screenSize.width < 0f || screenPos.x > size.width || screenPos.y + screenSize.height < 0f || screenPos.y > size.height) return
 
-    val bitmap: ImageBitmap? = when (structure.type) {
-        StructureType.HOUSE -> assets.houseBitmap
-        StructureType.STORE -> assets.storeBitmap
-        StructureType.WORKSHOP -> assets.workshopBitmap
-        StructureType.PLAZA -> assets.plazaBitmap
-        StructureType.TAVERN -> assets.tavernBitmap
+    if (!structure.isComplete) {
+        drawStructureBitmap(assets.constructionSiteBitmap, screenPos, screenSize)
+        return
+    }
+
+    val bitmap: ImageBitmap? = when (spec.id) {
+        "HOUSE" -> assets.houseBitmap
+        "STORE" -> assets.storeBitmap
+        "WORKSHOP" -> assets.workshopBitmap
+        "PLAZA" -> assets.plazaBitmap
+        "TAVERN" -> assets.tavernBitmap
+        "LUMBERJACK_HUT" -> assets.lumberjackHutBitmap
         else -> null
     }
 
     if (bitmap != null) {
         drawStructureBitmap(bitmap, screenPos, screenSize)
 
-        if (structure.type == StructureType.HOUSE) {
+        if (spec.id == "HOUSE") {
             val ownerLabel = structure.customName ?: structure.residents.firstOrNull()?.let { agentNameById[it] }?.let { "${it}'s House" }
             val label = ownerLabel ?: "House"
             val labelX = screenPos.x + screenSize.width / 2f
@@ -73,11 +69,10 @@ fun DrawScope.drawStructureItem(
             drawContext.canvas.nativeCanvas.drawText(label, labelX, labelY, assets.houseLabelPaint)
         }
     } else {
-        // Fallback for structures without bitmaps
         val rng = Random(structure.id.hashCode().toLong())
-        when (structure.type) {
-            StructureType.CASTLE -> drawMedievalCastle(screenPos, screenSize.width, screenSize.height, rng)
-            StructureType.WALL -> drawRect(Color(0xFF795548), screenPos, Size(screenSize.width - 1, screenSize.height - 1))
+        when (spec.id) {
+            "CASTLE" -> drawMedievalCastle(screenPos, screenSize.width, screenSize.height, rng)
+            "WALL" -> drawRect(Color(0xFF795548), screenPos, Size(screenSize.width - 1, screenSize.height - 1))
             else -> drawRect(Color(0xFF9CCC65), screenPos, Size(screenSize.width - 1, screenSize.height - 1))
         }
     }
@@ -99,7 +94,6 @@ fun DrawScope.drawLiveRoads(liveRoadTiles: List<UtopiaIntOffset>, camera: Camera
     liveRoadTiles.forEach { tile ->
         val worldPos = WorldGridMath.tileToWorld(tile.x, tile.y)
         val screenPos = worldToScreen(worldPos, camera)
-        // Uses the central authoritative primitive from RoadPrimitives.kt
         drawRoadTileInternal(screenPos, tileSize, (tile.x * 31 + tile.y).toLong())
     }
 }

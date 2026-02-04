@@ -1,0 +1,275 @@
+package com.example.utopia.domain
+
+import android.util.Log
+import com.example.utopia.data.models.AgentIntent
+import com.example.utopia.data.models.AgentRuntime
+import com.example.utopia.data.models.AgentState
+import com.example.utopia.data.models.InventoryItem
+import com.example.utopia.data.models.WorldState
+
+internal object EconomySystem {
+
+    /**
+     * Entry point for the economy phase.
+     * Logic order is preserved to allow resource flow (Prod -> Haul -> Trans/Const) in a single tick.
+     */
+    fun processEconomy(worldState: WorldState, deltaTimeMs: Long): WorldState {
+        val stateWithHauling = updateHauling(worldState)
+        val stateWithProduction = updateProduction(stateWithHauling, deltaTimeMs)
+        val stateWithTransformation = updateTransformation(stateWithProduction)
+        return updateConstruction(stateWithTransformation)
+    }
+
+    private fun updateProduction(state: WorldState, deltaTimeMs: Long): WorldState {
+        val producingStructures = state.structures.filter {
+            it.isComplete && it.spec.produces.isNotEmpty() && it.spec.consumes.isEmpty()
+        }
+        if (producingStructures.isEmpty()) return state
+
+        val newStructures = state.structures.toMutableList()
+        var changed = false
+
+        for (structure in producingStructures) {
+            val structureIndex = newStructures.indexOfFirst { it.id == structure.id }
+            if (structureIndex == -1) continue
+
+            // 1. Presence-based Worker Counting
+            val activeWorkersPresent = state.agents.count { agent ->
+                agent.workplaceId == structure.id &&
+                        state.getInfluencingStructure(agent.position.toOffset())?.id == structure.id
+            }
+
+            if (activeWorkersPresent == 0) {
+                // Decay accumulator slightly or just leave it? We'll leave it for now.
+                continue
+            }
+
+            // 2. Worker Scaling with Cap
+            val effectiveWorkers = minOf(activeWorkersPresent, structure.spec.maxEffectiveWorkers ?: activeWorkersPresent)
+            
+            // 3. Accumulate Time
+            var currentAcc = structure.productionAccMs + (deltaTimeMs * effectiveWorkers)
+            val interval = structure.spec.productionIntervalMs
+            
+            if (interval <= 0L) continue // Invalid config
+
+            var updatedInventory = structure.inventory.toMutableMap()
+            var localChanged = false
+
+            while (currentAcc >= interval) {
+                // Check all products for capacity
+                val canProduceAll = structure.spec.produces.all { (type, amount) ->
+                    val currentAmount = updatedInventory[type] ?: 0
+                    val capacity = structure.spec.inventoryCapacity[type] ?: 0
+                    currentAmount + amount <= capacity
+                }
+
+                if (canProduceAll) {
+                    structure.spec.produces.forEach { (type, amount) ->
+                        updatedInventory[type] = (updatedInventory[type] ?: 0) + amount
+                    }
+                    currentAcc -= interval
+                    localChanged = true
+                } else {
+                    // Capped - preserve accumulator but stop producing
+                    currentAcc = minOf(currentAcc, interval) 
+                    break
+                }
+            }
+
+            if (localChanged || currentAcc != structure.productionAccMs) {
+                newStructures[structureIndex] = structure.copy(
+                    inventory = updatedInventory,
+                    productionAccMs = currentAcc
+                )
+                changed = true
+            }
+        }
+
+        return if (changed) state.copy(structures = newStructures) else state
+    }
+
+
+    private fun updateTransformation(state: WorldState): WorldState {
+        val workingAgents = state.agents.filter {
+            it.state == AgentState.WORKING && it.workplaceId != null
+        }
+        if (workingAgents.isEmpty()) return state
+    
+        val newStructures = state.structures.toMutableList()
+        var changed = false
+    
+        for (agent in workingAgents) {
+            val workplaceIndex = newStructures.indexOfFirst { it.id == agent.workplaceId }
+            if (workplaceIndex == -1) continue
+    
+            val workplace = newStructures[workplaceIndex]
+            val consumesSpec = workplace.spec.consumes
+            val producesSpec = workplace.spec.produces
+
+            // Generic Transformation: Has both inputs and outputs
+            if (consumesSpec.isEmpty() || producesSpec.isEmpty()) continue
+    
+            // Guardrail 1: Check if output capacity is full BEFORE consuming inputs
+            val outputResourceType = producesSpec.keys.first()
+            val outputAmount = producesSpec.values.first()
+            val currentOutputAmount = workplace.inventory[outputResourceType] ?: 0
+            val outputCapacity = workplace.spec.inventoryCapacity[outputResourceType] ?: 0
+
+            if (currentOutputAmount + outputAmount > outputCapacity) continue
+
+            val canConsume = consumesSpec.all { (resource, amount) ->
+                (workplace.inventory[resource] ?: 0) >= amount
+            }
+    
+            if (canConsume) {
+                val newInventory = workplace.inventory.toMutableMap()
+
+                consumesSpec.forEach { (resource, amount) ->
+                    newInventory[resource] = (newInventory[resource] ?: 0) - amount
+                }
+
+                newInventory[outputResourceType] = currentOutputAmount + outputAmount
+                
+                newStructures[workplaceIndex] = workplace.copy(inventory = newInventory)
+                changed = true
+            }
+        }
+    
+        return if (changed) state.copy(structures = newStructures) else state
+    }
+
+    private fun updateHauling(worldState: WorldState): WorldState {
+        var changed = false
+        val newAgents = worldState.agents.toMutableList()
+        val newStructures = worldState.structures.toMutableList()
+
+        for ((agentIndex, agent) in worldState.agents.withIndex()) {
+            val intent = agent.currentIntent
+            // Note: EconomySystem does not know about movement. It checks the high-level state
+            // or preconditions provided by the snapshot.
+            if (!isIntentSatisfied(agent, worldState)) continue
+
+            when (intent) {
+                is AgentIntent.GetResource -> {
+                    val sourceIndex = newStructures.indexOfFirst { it.id == intent.targetId }
+                    if (sourceIndex == -1) continue
+                    val source = newStructures[sourceIndex]
+
+                    val currentAmount = source.inventory[intent.resource] ?: 0
+                    // Invariant: Source must have stock AND agent must be empty
+                    if (currentAmount > 0 && agent.carriedItem == null) {
+                        println("ECONOMY_TRACE: Agent ${agent.name} GET ${intent.resource} from ${source.spec.id}")
+                        val newInventory = source.inventory.toMutableMap()
+                        newInventory[intent.resource] = currentAmount - 1
+                        newStructures[sourceIndex] = source.copy(inventory = newInventory)
+
+                        newAgents[agentIndex] = agent.copy(
+                            carriedItem = InventoryItem(intent.resource, 1),
+                            currentIntent = AgentIntent.Idle,
+                            intentStartTimeMs = 0L // Reset to allow immediate re-decision next tick
+                        )
+                        changed = true
+                    }
+                }
+                is AgentIntent.StoreResource -> {
+                    val carried = agent.carriedItem
+                    // Invariant: Agent must have item to store
+                    if (carried == null) continue
+                    
+                    val sinkIndex = newStructures.indexOfFirst { it.id == intent.targetId }
+                    if (sinkIndex == -1) continue
+                    val sink = newStructures[sinkIndex]
+
+                    val resourceType = carried.type
+                    val currentAmount = sink.inventory[resourceType] ?: 0
+                    val capacity = sink.spec.inventoryCapacity[resourceType] ?: 0
+
+                    // Invariant: Sink must have capacity
+                    if (currentAmount < capacity) {
+                        println("ECONOMY_TRACE: Agent ${agent.name} STORE ${carried.type} to ${sink.spec.id}")
+                        val newInventory = sink.inventory.toMutableMap()
+                        newInventory[resourceType] = currentAmount + 1
+                        newStructures[sinkIndex] = sink.copy(inventory = newInventory)
+
+                        newAgents[agentIndex] = agent.copy(
+                            carriedItem = null,
+                            currentIntent = AgentIntent.Idle,
+                            intentStartTimeMs = 0L // Reset to allow immediate re-decision next tick
+                        )
+                        changed = true
+                    }
+                }
+                else -> {}
+            }
+        }
+
+        return if (changed) worldState.copy(agents = newAgents, structures = newStructures) else worldState
+    }
+
+    private fun updateConstruction(worldState: WorldState): WorldState {
+        var changed = false
+        val newStructures = worldState.structures.toMutableList()
+
+        for ((structureIndex, structure) in worldState.structures.withIndex()) {
+            if (structure.isComplete) continue
+
+            val builders = worldState.agents.filter {
+                it.currentIntent is AgentIntent.Construct && (it.currentIntent as AgentIntent.Construct).targetId == structure.id
+            }
+
+            if (builders.isNotEmpty()) {
+                var updatedStructure = structure
+
+                // Consume-all-at-start logic
+                if (!structure.buildStarted) {
+                    val requiredResources = structure.spec.buildCost
+                    val hasAllResources = requiredResources.all { (resource, amount) ->
+                        (structure.inventory[resource] ?: 0) >= amount
+                    }
+
+                    if (hasAllResources) {
+                        val newInventory = structure.inventory.toMutableMap()
+                        requiredResources.forEach { (resource, amount) ->
+                            newInventory[resource] = (newInventory[resource] ?: 0) - amount
+                        }
+                        updatedStructure = structure.copy(
+                            inventory = newInventory,
+                            buildStarted = true
+                        )
+                        changed = true
+                    } else {
+                        // Cannot start construction yet
+                        continue
+                    }
+                }
+
+                // Progress logic
+                val newProgress = updatedStructure.buildProgress + builders.size * 0.1f // arbitrary progress rate
+                if (newProgress >= 100f) {
+                    newStructures[structureIndex] = updatedStructure.copy(buildProgress = 100f, isComplete = true)
+                } else {
+                    newStructures[structureIndex] = updatedStructure.copy(buildProgress = newProgress)
+                }
+                changed = true
+            }
+        }
+
+        return if (changed) worldState.copy(structures = newStructures) else worldState
+    }
+
+    /**
+     * Logic check for whether an agent is positioned correctly to perform an economic action.
+     * Duplicate logic from AgentPhysics for now to avoid circular dependencies, 
+     * though ideally this would be part of a shared Perception/Spatial layer.
+     */
+    private fun isIntentSatisfied(agent: AgentRuntime, worldState: WorldState): Boolean {
+        val structure = worldState.getInfluencingStructure(agent.position.toOffset())
+        return when (val intent = agent.currentIntent) {
+            is AgentIntent.GetResource -> structure?.id == intent.targetId
+            is AgentIntent.StoreResource -> structure?.id == intent.targetId
+            is AgentIntent.Construct -> structure?.id == intent.targetId
+            else -> false
+        }
+    }
+}

@@ -1,0 +1,117 @@
+[
+  {
+    "id": "ROAD",
+    "behavior": "STROKE",
+    "spriteWidthPx": 16.0,
+    "spriteHeightPx": 16.0,
+    "blocksNavigation": false,
+    "capacity": 0,
+    "baselineTileY": 0
+  },
+  {
+    "id": "WALL",
+    "behavior": "STROKE",
+    "spriteWidthPx": 16.0,
+    "spriteHeightPx": 16.0,
+    "blocksNavigation": true,
+    "capacity": 0,
+    "baselineTileY": 0
+  },
+  {
+    "id": "HOUSE",
+    "behavior": "STAMP",
+    "spriteWidthPx": 138.8625,
+    "spriteHeightPx": 107.8125,
+    "blocksNavigation": true,
+    "capacity": 4,
+    "baselineTileY": 2,
+    "providesSleep": true,
+    "buildCost": {
+      "PLANKS": 10
+    }
+  },
+  {
+    "id": "STORE",
+    "behavior": "STAMP",
+    "spriteWidthPx": 104.19,
+    "spriteHeightPx": 80.9025,
+    "blocksNavigation": true,
+    "capacity": 0,
+    "baselineTileY": 2,
+    "providesStability": true,
+    "providesStimulation": true
+  },
+  {
+    "id": "WORKSHOP",
+    "behavior": "STAMP",
+    "spriteWidthPx": 159.735,
+    "spriteHeightPx": 107.8125,
+    "blocksNavigation": true,
+    "capacity": 0,
+    "baselineTileY": 2,
+    "providesStability": true,
+    "providesStimulation": true,
+    "consumes": {
+      "WOOD": 1
+    },
+    "produces": {
+      "PLANKS": 1
+    },
+    "inventoryCapacity": {
+      "WOOD": 10,
+      "PLANKS": 10
+    }
+  },
+  {
+    "id": "CASTLE",
+    "behavior": "STAMP",
+    "spriteWidthPx": 124.2,
+    "spriteHeightPx": 131.1,
+    "blocksNavigation": true,
+    "capacity": 4,
+    "baselineTileY": 4,
+    "providesSleep": true,
+    "providesStimulation": true
+  },
+  {
+    "id": "PLAZA",
+    "behavior": "STAMP",
+    "spriteWidthPx": 138.8625,
+    "spriteHeightPx": 107.8125,
+    "blocksNavigation": true,
+    "capacity": 0,
+    "baselineTileY": 3,
+    "providesFun": true
+  },
+  {
+    "id": "TAVERN",
+    "behavior": "STAMP",
+    "spriteWidthPx": 159.735,
+    "spriteHeightPx": 107.8125,
+    "blocksNavigation": true,
+    "capacity": 4,
+    "baselineTileY": 3,
+    "providesFun": true
+  },
+  {
+    "id": "LUMBERJACK_HUT",
+    "behavior": "STAMP",
+    "spriteWidthPx": 159.735,
+    "spriteHeightPx": 107.8125,
+    "blocksNavigation": true,
+    "capacity": 2,
+    "baselineTileY": 2,
+    "providesStability": true,
+    "productionIntervalMs": 5000,
+    "maxEffectiveWorkers": 2,
+    "produces": {
+      "WOOD": 1
+    },
+    "inventoryCapacity": {
+      "WOOD": 10
+    },
+    "buildCost": {
+      "WOOD": 5
+    }
+  }
+]

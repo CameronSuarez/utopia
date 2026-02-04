@@ -4,10 +4,19 @@ import androidx.compose.ui.geometry.Offset
 import com.example.utopia.util.Constants
 import kotlinx.serialization.Serializable
 import androidx.compose.ui.geometry.Rect
+import com.example.utopia.data.StructureRegistry
+import kotlinx.serialization.Transient
 import java.util.UUID
 
-// Constants (DEPRECATED - now in Constants.kt)
-// private const val TILE_PIXEL_SIZE = 16f 
+@Serializable
+enum class ResourceType {
+    WOOD,
+    PLANKS
+}
+
+@Serializable
+data class InventoryItem(val type: ResourceType, val quantity: Int)
+
 
 @Serializable
 enum class TileType {
@@ -23,56 +32,43 @@ enum class PlacementBehavior { STAMP, STROKE }
 data class GridOffset(val x: Int, val y: Int)
 
 /**
- * Defines the static properties of a a structure type.
- *
- * ARCHITECTURAL CONTRACT:
- * - Anchor: A structure's (x, y) position is its BOTTOM-LEFT corner in world space.
- * - Footprint Authority: `spriteWidthPx` and `spriteHeightPx` define the authoritative physical
- *   footprint of the structure, in PIXELS. This data must correspond to the full visual bounds of the sprite asset.
- *   This is the rectangle used for NavGrid blocking and physical interaction.
- * - Influence Area: The area a building claims for spacing is defined at the placement layer (WorldManager)
- *   and is intentionally larger than the physical footprint.
+ * Defines the static properties of a structure type. This is the data-driven replacement
+ * for the old StructureType enum.
  */
 @Serializable
-enum class StructureType(
+data class StructureSpec(
+    val id: String,
     val behavior: PlacementBehavior,
-    // TODO: A developer must replace these placeholder values with the TRUE pixel dimensions from the sprite assets.
     val spriteWidthPx: Float,
     val spriteHeightPx: Float,
     val blocksNavigation: Boolean,
     val capacity: Int = 0,
-    // Removed: isHotspot
     val baselineTileY: Int,
     val hitRadiusWorld: Float = 0f,
     val hitOffsetXWorld: Float = 0f,
-    val hitOffsetYWorld: Float = 0f
+    val hitOffsetYWorld: Float = 0f,
+    val providesSleep: Boolean = false,
+    val providesSocial: Boolean = false, // Deprecated: Social is now an emergent behavior
+    val providesFun: Boolean = false,
+    val providesStability: Boolean = false,
+    val providesStimulation: Boolean = false,
+    val productionIntervalMs: Long = 0L,
+    val maxEffectiveWorkers: Int? = null,
+    val produces: Map<ResourceType, Int> = emptyMap(),
+    val consumes: Map<ResourceType, Int> = emptyMap(),
+    val inventoryCapacity: Map<ResourceType, Int> = emptyMap(),
+    val buildCost: Map<ResourceType, Int> = emptyMap()
 ) {
-    ROAD(PlacementBehavior.STROKE, Constants.SPRITE_TILE_SIZE, Constants.SPRITE_TILE_SIZE, blocksNavigation = false, baselineTileY = 0),
-    WALL(PlacementBehavior.STROKE, Constants.SPRITE_TILE_SIZE, Constants.SPRITE_TILE_SIZE, blocksNavigation = true, baselineTileY = 0),
-    HOUSE(PlacementBehavior.STAMP, 138.8625f, 107.8125f, blocksNavigation = true, capacity = Constants.HOUSE_CAPACITY, baselineTileY = 2),
-    STORE(PlacementBehavior.STAMP, 104.19f, 80.9025f, blocksNavigation = true, baselineTileY = 2),
-    WORKSHOP(PlacementBehavior.STAMP, 159.735f, 107.8125f, blocksNavigation = true, baselineTileY = 2),
-    CASTLE(PlacementBehavior.STAMP, 124.2f, 131.1f, blocksNavigation = true, capacity = 4, baselineTileY = 4),
-    PLAZA(PlacementBehavior.STAMP, 138.8625f, 107.8125f, blocksNavigation = true, baselineTileY = 3),
-    TAVERN(PlacementBehavior.STAMP, 159.735f, 107.8125f, blocksNavigation = true, capacity = 4, baselineTileY = 3), // Removed isHotspot here
-    ;
-
-    val providesSleep: Boolean get() = this == HOUSE || this == CASTLE
-    val providesSocial: Boolean get() = false // Deprecated: Social is now an emergent behavior
-    val providesFun: Boolean get() = this == TAVERN || this == PLAZA
-    val providesStability: Boolean get() = this == STORE || this == WORKSHOP
-    val providesStimulation: Boolean get() = this == STORE || this == WORKSHOP || this == CASTLE
-
     /** The physical width of the structure's footprint in world units. Used for collision and NavGrid baking. */
-    val worldWidth: Float
-        get() = (spriteWidthPx / Constants.SPRITE_TILE_SIZE) * Constants.TILE_SIZE
+    @Transient
+    val worldWidth: Float = (spriteWidthPx / Constants.SPRITE_TILE_SIZE) * Constants.TILE_SIZE
 
     /** The physical height of the structure's footprint in world units. Used for collision and NavGrid baking. */
-    val worldHeight: Float
-        get() = (spriteHeightPx / Constants.SPRITE_TILE_SIZE) * Constants.TILE_SIZE
+    @Transient
+    val worldHeight: Float = (spriteHeightPx / Constants.SPRITE_TILE_SIZE) * Constants.TILE_SIZE
 
-    val baselineWorld: Float
-        get() = baselineTileY * Constants.TILE_SIZE * Constants.WORLD_SCALE
+    @Transient
+    val baselineWorld: Float = baselineTileY * Constants.TILE_SIZE * Constants.WORLD_SCALE
 }
 
 /**
@@ -85,16 +81,25 @@ enum class StructureType(
 @Serializable
 data class Structure(
     val id: String,
-    val type: StructureType,
+    val typeId: String,
     val x: Float,
     val y: Float,
     val residents: List<String> = emptyList(),
-    val customName: String? = null
+    val workers: List<String> = emptyList(),
+    val customName: String? = null,
+    val inventory: Map<ResourceType, Int> = emptyMap(),
+    val productionAccMs: Long = 0L,
+    val buildProgress: Float = 0f,
+    val isComplete: Boolean = true,
+    val buildStarted: Boolean = false
 ) {
+    @Transient
+    val spec: StructureSpec by lazy { StructureRegistry.get(typeId) }
+
     fun getWorldFootprint(): Rect {
         return Rect(
-            offset = Offset(x, y - type.worldHeight),
-            size = androidx.compose.ui.geometry.Size(type.worldWidth, type.worldHeight)
+            offset = Offset(x, y - spec.worldHeight),
+            size = androidx.compose.ui.geometry.Size(spec.worldWidth, spec.worldHeight)
         )
     }
 }
@@ -112,7 +117,7 @@ enum class AppearanceVariant { DEFAULT }
 @Serializable
 enum class AgentState { IDLE, TRAVELING, SLEEPING, SOCIALIZING, WORKING, HAVING_FUN, TRADING }
 @Serializable
-enum class PoiType { HOUSE, STORE, WORKSHOP, CASTLE, PLAZA, TAVERN }
+enum class PoiType { HOUSE, STORE, WORKSHOP, CASTLE, PLAZA, TAVERN, LUMBERJACK_HUT }
 @Serializable
 data class POI(val id: String, val type: PoiType, val pos: SerializableOffset)
 @Serializable
@@ -170,6 +175,7 @@ data class EmojiSignal(
 data class WorldState(
     val tiles: Array<Array<TileType>>,
     val structures: List<Structure> = emptyList(),
+    @Transient val structureGrid: Array<Array<String?>> = Array(Constants.MAP_TILES_W) { Array(Constants.MAP_TILES_H) { null } },
     val agents: List<AgentRuntime> = emptyList(),
     val props: List<PropInstance> = emptyList(),
     val pois: List<POI> = emptyList(),
@@ -178,8 +184,11 @@ data class WorldState(
     val nextAgentId: Int = 0,
     val roadRevision: Int = 0,
     val structureRevision: Int = 0,
-    val version: Int = 14
+    val version: Int = 15
 ) {
+    @Transient
+    var transient_hasAvailableWorkplace: Boolean = false
+
     fun copyTiles(): Array<Array<TileType>> = Array(tiles.size) { x -> tiles[x].copyOf() }
 
     fun getTileAtWorld(pos: Offset): TileType {
@@ -222,6 +231,7 @@ data class WorldState(
         if (other !is WorldState) return false
 
         if (!tiles.contentDeepEquals(other.tiles)) return false
+        if (!structureGrid.contentDeepEquals(other.structureGrid)) return false
         if (structures != other.structures) return false
         if (agents != other.agents) return false
         if (props != other.props) return false
@@ -238,6 +248,7 @@ data class WorldState(
 
     override fun hashCode(): Int {
         var result = tiles.contentDeepHashCode()
+        result = 31 * result + structureGrid.contentDeepHashCode()
         result = 31 * result + structures.hashCode()
         result = 31 * result + agents.hashCode()
         result = 31 * result + props.hashCode()
@@ -254,7 +265,7 @@ data class WorldState(
 
 @Serializable
 data class WorldStateData(
-    val version: Int = 14,
+    val version: Int = 15,
     val tiles: List<List<TileType>>,
     val structures: List<Structure>,
     val agents: List<AgentRuntime>,

@@ -19,6 +19,8 @@ data class AgentRuntime(
 
     // Intent & Goals
     val currentIntent: AgentIntent, // Example: "Wandering", "SeekingSocial", "Working"
+    val workplaceId: String? = null,
+    val homeId: String? = null,
 
     // Intrinsic Traits
     val personality: PersonalityVector,
@@ -26,6 +28,9 @@ data class AgentRuntime(
 
     // Social State
     val socialMemory: SocialMemory,
+
+    // Economy
+    val carriedItem: InventoryItem? = null,
 
     // Situation-dependent State
     @Transient
