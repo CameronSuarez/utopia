@@ -27,6 +27,7 @@ import com.example.utopia.data.StructureRegistry
 import com.example.utopia.data.models.*
 import com.example.utopia.debug.AgentLabelOverlay
 import com.example.utopia.util.Constants
+import kotlinx.coroutines.delay
 
 @Composable
 fun CityScreen(viewModel: GameViewModel) {
@@ -107,6 +108,14 @@ fun CityScreen(viewModel: GameViewModel) {
     }
     val portraitCache = remember { PortraitCache() }
     val emojiFxAssets = remember(emojiPaint, affinityPaint, portraitCache) { EmojiFxAssets(emojiPaint, affinityPaint, portraitCache) }
+
+    var timeMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            timeMs = System.currentTimeMillis()
+            delay(16)
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -195,6 +204,21 @@ fun CityScreen(viewModel: GameViewModel) {
                     )
                 }
         ) {
+            val renderContext = remember(camera, timeMs, groundBitmap, roadBitmap, roadBitmapAsset, structureAssets, propAssets, emojiFxAssets, agentNameById, viewModel.showNavGridDebug, viewModel.navGrid) {
+                RenderContext(
+                    camera = camera,
+                    timeMs = timeMs,
+                    groundBitmap = groundBitmap,
+                    roadBitmap = roadBitmap,
+                    roadAsset = roadBitmapAsset,
+                    structureAssets = structureAssets,
+                    propAssets = propAssets,
+                    emojiFxAssets = emojiFxAssets,
+                    agentNameById = agentNameById,
+                    showNavGrid = viewModel.showNavGridDebug,
+                    navGrid = viewModel.navGrid
+                )
+            }
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
@@ -206,19 +230,6 @@ fun CityScreen(viewModel: GameViewModel) {
                         }
                     }
             ) {
-                val renderContext = RenderContext(
-                    camera = camera,
-                    timeMs = System.currentTimeMillis(),
-                    groundBitmap = groundBitmap,
-                    roadBitmap = roadBitmap,
-                    roadAsset = roadBitmapAsset,
-                    structureAssets = structureAssets,
-                    propAssets = propAssets,
-                    emojiFxAssets = emojiFxAssets,
-                    agentNameById = agentNameById,
-                    showNavGrid = viewModel.showNavGridDebug,
-                    navGrid = viewModel.navGrid
-                )
                 val sceneSnapshot = SceneSnapshot(
                     worldState = worldState,
                     liveRoadTiles = pc.liveRoadTiles,
@@ -362,7 +373,7 @@ fun StructureProfilePanel(info: SelectedStructureInfo, onClose: () -> Unit) {
                     Text("X")
                 }
             }
-            Divider(modifier = Modifier.padding(vertical = 8.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             when (info) {
                 is SelectedStructureInfo.Residence -> {

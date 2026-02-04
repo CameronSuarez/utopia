@@ -120,14 +120,15 @@ fun buildVisibleWorldObjects(
         index.insert(fxItem, bounds)
     }
 
-    val worldL = -camera.offset.x / camera.zoom
-    val worldT = -camera.offset.y / camera.zoom
-    val worldR = worldL + (viewportSize.width / camera.zoom)
-    val worldB = worldT + (viewportSize.height / camera.zoom)
+    val margin = 200f
+    val worldL = -camera.offset.x / camera.zoom - margin
+    val worldT = -camera.offset.y / camera.zoom - margin
+    val worldR = worldL + (viewportSize.width / camera.zoom) + margin * 2
+    val worldB = worldT + (viewportSize.height / camera.zoom) + margin * 2
     val viewportRect = Rect(worldL, worldT, worldR, worldB)
 
     return index.query(viewportRect)
-        .sortedWith(compareBy<RenderItemRef> { it.depthY }.thenBy { it.depthX }.thenBy { it.tieBreak })
+        .sortedWith(compareBy { it.depthY })
 }
 
 class GroundLayer : RenderLayer {
