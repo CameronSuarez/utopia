@@ -7,6 +7,12 @@ import com.example.utopia.data.models.WorldState
  */
 interface SimulationSystem {
     /**
+     * Stable identifier used for ordering and diagnostics.
+     */
+    val id: String
+        get() = this::class.java.simpleName
+
+    /**
      * Updates the world state for this system's specific domain.
      * 
      * @param state The current world state at the start of this system's phase.

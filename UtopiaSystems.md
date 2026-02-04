@@ -1,4 +1,4 @@
-# Utopia Engine: System Architecture
+﻿# Utopia Engine: System Architecture
 
 ## 1. Core Philosophy
 -   **Data-Driven**: Game entities (structures, agents) are defined in data files (`assets/data/`), not hardcoded.
@@ -64,3 +64,13 @@ The simulation systems (`SystemWrappers.kt`, `EconomySystem.kt`, `AgentPhysics.k
 -   Replacing mutable variables (`var`) with immutable ones (`val`) where the variable was not reassigned.
 -   Simplifying conditional logic and removing redundant code.
 -   Eliminating unnecessary type casts made redundant by Kotlin's smart-casting feature.
+
+---
+
+## 6. Explicit Changes In This Context
+-   **`SimulationSystem`** (`app/src/main/java/com/example/utopia/domain/SimulationSystem.kt`): Added a stable `id` property used for ordering and diagnostics.
+-   **`SimulationPipeline`** (`app/src/main/java/com/example/utopia/domain/SimulationPipeline.kt`): Added a container that executes a list of `SimulationSystem` instances in order.
+    -   **`run(state, deltaTimeMs, nowMs)`**: Executes each system sequentially, passing the updated `WorldState` to the next system.
+    -   **`validateOrderInvariants()`**: Enforces the order invariant that `WorldAnalysisSystem` must run before `AgentIntentSystemWrapper`.
+-   **`WorldManager`** (`app/src/main/java/com/example/utopia/domain/WorldManager.kt`): `simulationPipeline` is now a `SimulationPipeline` instance, and `advanceTick` delegates execution to `SimulationPipeline.run(...)`.
+-   **`SimulationPipelineTest`** (`app/src/test/java/com/example/utopia/domain/SimulationPipelineTest.kt`): Added tests that assert the pipeline order invariant and accept the current ordering.

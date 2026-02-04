@@ -23,18 +23,20 @@ private const val OWNERSHIP_MARGIN_Y = 3
 class WorldManager(private val navGrid: NavGrid) {
     val random = Random(WORLD_SEED)
 
-    private val simulationPipeline = listOf(
-        AgentAssignmentSystem,
-        AgentNeedsSystemWrapper,
-        AgentSocialSystemWrapper,
-        AgentGossipSystemWrapper,
-        AgentEmojiSystemWrapper,
-        AgentRelationshipSystemWrapper,
-        WorldAnalysisSystem,
-        AgentIntentSystemWrapper,
-        AgentPhysicsWrapper(navGrid),
-        EconomySystemWrapper,
-        StaleTargetCleanupSystem
+    private val simulationPipeline = SimulationPipeline(
+        listOf(
+            AgentAssignmentSystem,
+            AgentNeedsSystemWrapper,
+            AgentSocialSystemWrapper,
+            AgentGossipSystemWrapper,
+            AgentEmojiSystemWrapper,
+            AgentRelationshipSystemWrapper,
+            WorldAnalysisSystem,
+            AgentIntentSystemWrapper,
+            AgentPhysicsWrapper(navGrid),
+            EconomySystemWrapper,
+            StaleTargetCleanupSystem
+        )
     )
 
     private val maleNames = listOf("Alaric", "Cedric", "Eldred", "Godwin", "Ivor", "Kenric", "Merrick", "Osric", "Stig", "Ulf", "Wulf", "Zoric", "Bram", "Ewan", "Quinn")
@@ -128,11 +130,7 @@ class WorldManager(private val navGrid: NavGrid) {
 
     fun advanceTick(deltaTimeMs: Long, nowMs: Long) {
         val oldState = _worldState.value
-        var newState = oldState
-
-        for (system in simulationPipeline) {
-            newState = system.update(newState, deltaTimeMs, nowMs)
-        }
+        val newState = simulationPipeline.run(oldState, deltaTimeMs, nowMs)
 
         val newlyCompletedHouses = newState.structures.filter { newStructure ->
             newStructure.typeId == "HOUSE" && newStructure.isComplete &&
