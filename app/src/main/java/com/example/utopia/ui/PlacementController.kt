@@ -183,7 +183,7 @@ class PlacementController(
         activeTool = structure.spec
         worldPos = Offset(structure.x, structure.y)
         state = PlacementState.DRAGGING_GHOST
-        worldManager.removeStructureAt(structure.x, structure.y, isMoving = true)
+        worldManager.removeStructureAt(structure.x, structure.y)
         onWorldChanged()
     }
 

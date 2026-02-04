@@ -21,6 +21,8 @@ data class RenderContext(
     val emojiFxAssets: EmojiFxAssets,
     val agentNameById: Map<String, String>,
     val showNavGrid: Boolean,
+    val showAgentPaths: Boolean,
+    val showSocialFields: Boolean,
     val navGrid: NavGrid? = null
 )
 

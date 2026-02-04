@@ -1,6 +1,5 @@
 package com.example.utopia.domain
 
-import android.util.Log
 import com.example.utopia.data.models.AgentIntent
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.AgentState
@@ -53,7 +52,7 @@ internal object EconomySystem {
             
             if (interval <= 0L) continue // Invalid config
 
-            var updatedInventory = structure.inventory.toMutableMap()
+            val updatedInventory = structure.inventory.toMutableMap()
             var localChanged = false
 
             while (currentAcc >= interval) {
@@ -173,9 +172,8 @@ internal object EconomySystem {
                     }
                 }
                 is AgentIntent.StoreResource -> {
-                    val carried = agent.carriedItem
+                    val carried = agent.carriedItem ?: continue
                     // Invariant: Agent must have item to store
-                    if (carried == null) continue
                     
                     val sinkIndex = newStructures.indexOfFirst { it.id == intent.targetId }
                     if (sinkIndex == -1) continue
@@ -215,7 +213,8 @@ internal object EconomySystem {
             if (structure.isComplete) continue
 
             val builders = worldState.agents.filter {
-                it.currentIntent is AgentIntent.Construct && (it.currentIntent as AgentIntent.Construct).targetId == structure.id
+                val intent = it.currentIntent
+                intent is AgentIntent.Construct && intent.targetId == structure.id
             }
 
             if (builders.isNotEmpty()) {
@@ -237,7 +236,6 @@ internal object EconomySystem {
                             inventory = newInventory,
                             buildStarted = true
                         )
-                        changed = true
                     } else {
                         // Cannot start construction yet
                         continue

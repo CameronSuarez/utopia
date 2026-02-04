@@ -72,6 +72,13 @@ fun DebugPanel(
                     expanded = false
                 }
             )
+            DropdownMenuItem(
+                text = { Text(if (viewModel.showSocialFields) "Hide Social Fields" else "Show Social Fields") },
+                onClick = {
+                    viewModel.showSocialFields = !viewModel.showSocialFields
+                    expanded = false
+                }
+            )
             // REMOVED: AgentClearanceDebug menu item
             // REMOVED: AgentVectorsDebug menu item
         }

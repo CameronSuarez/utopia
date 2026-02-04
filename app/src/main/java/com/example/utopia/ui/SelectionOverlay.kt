@@ -1,18 +1,29 @@
 package com.example.utopia.ui
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.utopia.data.models.Structure
+import com.example.utopia.data.models.WorldState
+import com.example.utopia.util.Constants
+
+private const val OWNERSHIP_MARGIN_X = 2
+private const val OWNERSHIP_MARGIN_Y = 3
 
 @Composable
 fun SelectionOverlay(viewModel: GameViewModel) {
@@ -24,29 +35,186 @@ fun SelectionOverlay(viewModel: GameViewModel) {
         val building = worldState.structures.find { it.id == buildingId }
         if (building != null) {
             val screenPos = worldToScreen(Offset(building.x, building.y), camera)
-            BuildingInfo(building, screenPos)
+            BuildingInfoPanel(building, worldState, screenPos)
         }
     }
 }
 
 @Composable
-fun BuildingInfo(building: Structure, screenPos: Offset) {
+fun BuildingInfoPanel(building: Structure, worldState: WorldState, screenPos: Offset) {
     Surface(
-        color = Color.DarkGray.copy(alpha = 0.9f),
+        color = Color.DarkGray.copy(alpha = 0.95f),
         shape = androidx.compose.material3.MaterialTheme.shapes.small,
-        modifier = Modifier.offset(pxToDp(screenPos.x), pxToDp(screenPos.y - 60f))
+        modifier = Modifier
+            .offset(pxToDp(screenPos.x), pxToDp(screenPos.y - 150f))
+            .width(280.dp)
     ) {
         Column(modifier = Modifier.padding(8.dp)) {
-            Text(building.customName ?: building.spec.id, color = Color.White, fontSize = 12.sp)
-            // REMOVED: Job slot and worker display logic
+            StatusHeader(building)
+            Spacer(modifier = Modifier.height(8.dp))
+            ProductionInfo(building)
+            Spacer(modifier = Modifier.height(8.dp))
+            InventoryInfo(building)
+            Spacer(modifier = Modifier.height(8.dp))
+            WorkersInfo(building, worldState)
+            Spacer(modifier = Modifier.height(8.dp))
+            DebugInfo(building, worldState)
+        }
+    }
+}
 
-            if (building.spec.capacity > 0) {
-                Row {
-                    repeat(building.spec.capacity) { i ->
-                        Text(if (i < building.residents.size) "🏠" else "⚪", fontSize = 14.sp)
-                    }
+@Composable
+fun StatusHeader(building: Structure) {
+    val gx = (building.x / Constants.TILE_SIZE).toInt()
+    val gy = (building.y / Constants.TILE_SIZE).toInt()
+
+    val state: String
+    val reason: String
+
+    if (!building.isComplete) {
+        state = "Under Construction"
+        reason = "Waiting for builders and materials."
+    } else if (building.spec.produces.isNotEmpty()) {
+        val inventoryFull = building.inventory.any { (type, quantity) ->
+            val capacity = building.spec.inventoryCapacity[type] ?: 0
+            quantity >= capacity
+        }
+        val missingInputs = building.spec.consumes.any { (type, amount) ->
+            (building.inventory[type] ?: 0) < amount
+        }
+
+        if (inventoryFull) {
+            state = "Blocked"
+            reason = "Storage is full."
+        } else if (missingInputs) {
+            state = "Blocked"
+            reason = "Missing input materials."
+        } else if (building.workers.isEmpty() && building.spec.capacity > 0) {
+            state = "Idle"
+            reason = "No workers assigned."
+        } else {
+            state = "Producing"
+            reason = "Working as expected."
+        }
+    } else {
+        state = "Idle"
+        reason = "Not a production building."
+    }
+
+    Text(building.customName ?: building.spec.id, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+    Text("ID: ${building.id.substring(0, 8)} at ($gx, $gy)", color = Color.Gray, fontSize = 10.sp)
+    Text("State: $state", color = Color.White, fontSize = 12.sp)
+    if (building.spec.produces.isNotEmpty()) {
+        Text("Recipe: ${building.spec.produces.keys.joinToString()}", color = Color.White, fontSize = 12.sp)
+    }
+    Text("Workers: ${building.workers.size} / ${building.spec.capacity}", color = Color.White, fontSize = 12.sp)
+    Text(reason, color = Color.Yellow, fontSize = 10.sp)
+}
+
+@Composable
+fun ProductionInfo(building: Structure) {
+    if (building.spec.productionIntervalMs <= 0) return
+
+    Column {
+        Text("Production", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
+
+        val progress = (building.productionAccMs.toFloat() / building.spec.productionIntervalMs) * 100
+        val nextOutputMs = building.spec.productionIntervalMs - building.productionAccMs
+
+        Text("Interval: ${building.spec.productionIntervalMs}ms", fontSize = 10.sp, color = Color.LightGray)
+        building.spec.maxEffectiveWorkers?.let {
+            Text("Max effective workers: $it", fontSize = 10.sp, color = Color.LightGray)
+        }
+        Text("Accumulator: ${building.productionAccMs}ms (${"%.1f".format(progress)}%)", fontSize = 10.sp, color = Color.LightGray)
+        Text("Next output in: ${nextOutputMs}ms", fontSize = 10.sp, color = Color.LightGray)
+    }
+}
+
+@Composable
+fun InventoryInfo(building: Structure) {
+    if (building.spec.inventoryCapacity.isEmpty()) return
+
+    Column {
+        Text("Inventory", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
+        building.spec.inventoryCapacity.keys.forEach { resourceType ->
+            val current = building.inventory[resourceType] ?: 0
+            val max = building.spec.inventoryCapacity[resourceType] ?: 0
+            Text("$resourceType: $current / $max", fontSize = 10.sp, color = Color.LightGray)
+        }
+    }
+}
+
+@Composable
+fun WorkersInfo(building: Structure, worldState: WorldState) {
+    if (building.spec.capacity <= 0) return
+
+    val lotRect = getLotRect(building)
+    val agentsInLotCount = worldState.agents.count { lotRect.contains(it.position.toOffset()) }
+
+    Column {
+        Text("Workers", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
+        Text("Assigned: ${building.workers.size} / ${building.spec.capacity}", fontSize = 10.sp, color = Color.LightGray)
+        Text("Agents in Lot: $agentsInLotCount", fontSize = 10.sp, color = Color.LightGray)
+
+        if (building.workers.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            building.workers.forEach { workerId ->
+                val agent = worldState.agents.find { it.id == workerId }
+                if (agent != null) {
+                    val workplaceMatch = agent.workplaceId == building.id
+                    Text(
+                        "▶ ${agent.name} (${agent.id.substring(0, 4)})",
+                        fontSize = 10.sp,
+                        color = if (workplaceMatch) Color.Green else Color.Red
+                    )
+                    Text(
+                        "   - Intent: ${agent.currentIntent::class.simpleName}",
+                        fontSize = 9.sp,
+                        color = Color.LightGray
+                    )
+                    Text(
+                        "   - Agent says workplace: ${agent.workplaceId?.substring(0, 4) ?: "null"}",
+                        fontSize = 9.sp,
+                        color = if (workplaceMatch) Color.Green else Color.Red
+                    )
+                } else {
+                    Text("▶ ${workerId.substring(0, 4)} (Agent data not found)", fontSize = 10.sp, color = Color.Red)
                 }
             }
         }
     }
+}
+
+@Composable
+fun DebugInfo(building: Structure, worldState: WorldState) {
+    val isEligible = building.isComplete &&
+            (building.spec.produces.isNotEmpty() || building.spec.consumes.isNotEmpty()) &&
+            building.spec.capacity > 0 &&
+            building.workers.size < building.spec.capacity
+    val openSlots = building.spec.capacity - building.workers.size
+
+    Column {
+        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+        Text("Debug Info", fontWeight = FontWeight.Bold, color = Color.Cyan, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        Text("eligibleWorkplace: $isEligible", fontSize = 9.sp, color = if (isEligible) Color.Green else Color.Red, fontFamily = FontFamily.Monospace)
+        Text("openSlots: $openSlots", fontSize = 9.sp, color = Color.Cyan, fontFamily = FontFamily.Monospace)
+        Text("Assigned IDs: [${building.workers.joinToString { it.substring(0, 4) }}]", fontSize = 9.sp, color = Color.Cyan, fontFamily = FontFamily.Monospace)
+        val lotRect = getLotRect(building)
+        Text("Lot Rect: [${lotRect.left.toInt()}, ${lotRect.top.toInt()}, ${lotRect.right.toInt()}, ${lotRect.bottom.toInt()}]", fontSize = 9.sp, color = Color.Cyan, fontFamily = FontFamily.Monospace)
+        worldState.agents.find { it.workplaceId == building.id }?.let { agent ->
+             Text("Agent '${agent.name}' Pos: (${agent.position.x.toInt()}, ${agent.position.y.toInt()})", fontSize = 9.sp, color = Color.Cyan, fontFamily = FontFamily.Monospace)
+        }
+        Text("TILE_SIZE: ${Constants.TILE_SIZE}", fontSize = 9.sp, color = Color.Cyan, fontFamily = FontFamily.Monospace)
+    }
+}
+
+
+private fun getLotRect(structure: Structure): Rect {
+    val footprintRect = structure.getWorldFootprint()
+    return Rect(
+        left = footprintRect.left - OWNERSHIP_MARGIN_X * Constants.TILE_SIZE,
+        top = footprintRect.top - OWNERSHIP_MARGIN_Y * Constants.TILE_SIZE,
+        right = footprintRect.right + OWNERSHIP_MARGIN_X * Constants.TILE_SIZE,
+        bottom = footprintRect.bottom + OWNERSHIP_MARGIN_Y * Constants.TILE_SIZE
+    )
 }

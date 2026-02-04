@@ -24,13 +24,13 @@ class WorldManager(private val navGrid: NavGrid) {
     val random = Random(WORLD_SEED)
 
     private val simulationPipeline = listOf(
-        WorldAnalysisSystem,
         AgentAssignmentSystem,
         AgentNeedsSystemWrapper,
         AgentSocialSystemWrapper,
         AgentGossipSystemWrapper,
         AgentEmojiSystemWrapper,
         AgentRelationshipSystemWrapper,
+        WorldAnalysisSystem,
         AgentIntentSystemWrapper,
         AgentPhysicsWrapper(navGrid),
         EconomySystemWrapper,
@@ -794,7 +794,7 @@ class WorldManager(private val navGrid: NavGrid) {
         staticLayerId++
     }
 
-    fun removeStructureAt(x: Float, y: Float, isMoving: Boolean = false) {
+    fun removeStructureAt(x: Float, y: Float) {
         val currentState = _worldState.value
         val structure = currentState.structures.find { s ->
             val footprint = Rect(s.x, s.y - s.spec.worldHeight, s.x + s.spec.worldWidth, s.y)
@@ -882,7 +882,7 @@ class WorldManager(private val navGrid: NavGrid) {
                     poiType,
                     SerializableOffset(s.x + s.spec.worldWidth / 2, s.y - s.spec.worldHeight / 2) // Center point
                 )
-            } catch (e: IllegalArgumentException) {
+            } catch (_: IllegalArgumentException) {
                 null // Not a POI
             }
         }

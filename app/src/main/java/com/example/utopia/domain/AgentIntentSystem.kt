@@ -66,7 +66,7 @@ object AgentIntentSystem {
         } else {
             // Pressure to seek work if unemployed and a job is available
             if (worldState.transient_hasAvailableWorkplace) {
-                pressures[AgentIntent.Work] = 0.6f // Moderate pressure to find a job
+                pressures[AgentIntent.Work] = 0.9f // HIGH pressure to find a job
             }
         }
 

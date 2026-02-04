@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.util.Constants
@@ -27,8 +26,6 @@ private fun AgentLabel(
     agent: AgentRuntime,
     cameraOffset: Offset
 ) {
-    val density = LocalDensity.current
-    
     val screenX = agent.x + cameraOffset.x
     val screenY = agent.y + cameraOffset.y - Constants.TILE_SIZE * 0.6f
 

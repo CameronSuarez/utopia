@@ -6,7 +6,9 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.PropInstance
 import com.example.utopia.data.models.Structure
+import com.example.utopia.debug.drawAgentPaths
 import com.example.utopia.domain.NavGrid
+import com.example.utopia.ui.rendering.SocialFieldRenderer
 import com.example.utopia.util.Constants
 import kotlin.math.floor
 
@@ -176,6 +178,12 @@ class DebugOverlayLayer : RenderLayer {
         val navGrid = context.navGrid
         if (context.showNavGrid && navGrid is NavGrid) {
             drawNavGridOverlay(navGrid, context.camera)
+        }
+        if (context.showAgentPaths) {
+            drawAgentPaths(snapshot.worldState.agents, context.camera.offset)
+        }
+        if (context.showSocialFields) {
+            SocialFieldRenderer.drawSocialFields(this, snapshot.worldState.socialFields, context.camera)
         }
     }
 }

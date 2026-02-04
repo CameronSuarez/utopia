@@ -4,7 +4,6 @@ import androidx.compose.ui.geometry.Offset
 import com.example.utopia.data.models.AgentIntent
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.AgentState
-import com.example.utopia.data.models.InventoryItem
 import com.example.utopia.data.models.PoiType
 import com.example.utopia.data.models.SerializableOffset
 import com.example.utopia.data.models.TileType
@@ -21,11 +20,10 @@ internal fun updateAgents(
     agents: List<AgentRuntime>,
     worldState: WorldState,
     navGrid: NavGrid,
-    deltaTimeMs: Long,
-    nowMs: Long
+    deltaTimeMs: Long
 ): List<AgentRuntime> {
     return agents.map { agent ->
-        updateAgentTick(agent, worldState, navGrid, deltaTimeMs, nowMs)
+        updateAgentTick(agent, worldState, navGrid, deltaTimeMs)
     }
 }
 
@@ -33,8 +31,7 @@ private fun updateAgentTick(
     agent: AgentRuntime,
     worldState: WorldState,
     navGrid: NavGrid,
-    deltaTimeMs: Long,
-    nowMs: Long
+    deltaTimeMs: Long
 ): AgentRuntime {
     if (agent.state == AgentState.SOCIALIZING) {
         return agent.copy(
@@ -89,28 +86,19 @@ private fun updateAgentTick(
     val intentSatisfiedState = when (val intent = agent.currentIntent) {
         AgentIntent.SeekSleep -> if (structure?.spec?.providesSleep == true) AgentState.SLEEPING else null
         AgentIntent.SeekFun -> if (structure?.spec?.providesFun == true) AgentState.HAVING_FUN else null
-        AgentIntent.SeekStability -> {
-            when (structure?.spec?.id) {
-                "STORE" -> AgentState.TRADING
-                "WORKSHOP" -> AgentState.WORKING
-                "LUMBERJACK_HUT" -> AgentState.WORKING
-                else -> null
-            }
-        }
-        AgentIntent.SeekStimulation -> {
-            when {
-                structure?.spec?.id == "STORE" -> AgentState.TRADING
-                structure?.spec?.id == "WORKSHOP" -> AgentState.WORKING
-                structure?.spec?.id == "LUMBERJACK_HUT" -> AgentState.WORKING
-                structure?.isComplete == false -> AgentState.WORKING
-                worldState.getTileAtWorld(agent.position.toOffset()) == TileType.ROAD -> AgentState.WORKING
-                else -> null
-            }
-        }
+        AgentIntent.SeekStability -> if (structure?.spec?.id == "STORE") AgentState.TRADING else null
+        AgentIntent.SeekStimulation -> if (structure?.spec?.id == "STORE") AgentState.TRADING else null
         is AgentIntent.Construct -> if (structure?.id == intent.targetId) AgentState.WORKING else null
         is AgentIntent.GetResource -> if (structure?.id == intent.targetId) AgentState.WORKING else null
         is AgentIntent.StoreResource -> if (structure?.id == intent.targetId) AgentState.WORKING else null
-        AgentIntent.Work -> if (structure?.id == agent.workplaceId) AgentState.WORKING else null
+        AgentIntent.Work -> {
+            // An agent is only truly WORKING if they have the Work intent AND are at their assigned workplace.
+            if (agent.workplaceId != null && structure?.id == agent.workplaceId) {
+                AgentState.WORKING
+            } else {
+                null
+            }
+        }
         else -> null
     }
 
@@ -132,7 +120,7 @@ private fun updateAgentTick(
 private fun isIntentSatisfied(agent: AgentRuntime, worldState: WorldState): Boolean {
     val structure = worldState.getInfluencingStructure(agent.position.toOffset())
     return when (val intent = agent.currentIntent) {
-        AgentIntent.Work -> structure?.id == agent.workplaceId
+        AgentIntent.Work -> structure?.id == agent.workplaceId && agent.workplaceId != null
         AgentIntent.SeekSleep -> {
             if (agent.homeId != null) {
                 structure?.id == agent.homeId
@@ -142,13 +130,7 @@ private fun isIntentSatisfied(agent: AgentRuntime, worldState: WorldState): Bool
         }
         AgentIntent.SeekFun -> structure?.spec?.providesFun == true
         AgentIntent.SeekStability -> structure?.spec?.id == "STORE" || structure?.spec?.id == "WORKSHOP" || structure?.spec?.id == "LUMBERJACK_HUT"
-        AgentIntent.SeekStimulation -> {
-            val tile = worldState.getTileAtWorld(agent.position.toOffset())
-            structure?.spec?.providesStimulation == true ||
-                    structure?.spec?.id == "LUMBERJACK_HUT" ||
-                    structure?.isComplete == false ||
-                    tile == TileType.ROAD
-        }
+        AgentIntent.SeekStimulation -> structure?.spec?.providesStimulation == true
         is AgentIntent.GetResource, is AgentIntent.StoreResource -> {
             val targetId = if (intent is AgentIntent.GetResource) intent.targetId else (intent as AgentIntent.StoreResource).targetId
             structure?.id == targetId
@@ -226,11 +208,8 @@ private fun calculateSeparationForce(agent: AgentRuntime, allAgents: List<AgentR
 private fun calculateWanderForce(agent: AgentRuntime): Offset {
     val isIdleWandering = agent.state == AgentState.IDLE &&
             (agent.currentIntent == AgentIntent.Idle || agent.currentIntent == AgentIntent.Wandering)
-
     val isFunWandering = agent.state == AgentState.HAVING_FUN && agent.currentIntent == AgentIntent.SeekFun
     val isTradingWandering = agent.state == AgentState.TRADING
-
-    if (!isIdleWandering && !isFunWandering && !isTradingWandering) return Offset.Zero
 
     if (isIdleWandering) {
         val seed = agent.id.hashCode().toLong() + (System.currentTimeMillis() / 2000)
@@ -252,7 +231,6 @@ private fun calculateWanderForce(agent: AgentRuntime): Offset {
                 .times(Constants.WANDER_FORCE * Constants.TILE_SIZE)
         }
     }
-
     return Offset.Zero
 }
 

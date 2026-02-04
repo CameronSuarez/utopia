@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -27,8 +28,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.UiComposable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +39,7 @@ import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.AppearanceSpec
 import com.example.utopia.data.models.AppearanceVariant
 import com.example.utopia.data.models.Gender
+import com.example.utopia.data.models.WorldState
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -44,6 +47,7 @@ import kotlin.math.roundToInt
 fun AgentProfilePanel(
     agent: AgentRuntime,
     allAgents: List<AgentRuntime>,
+    worldState: WorldState,
     onClose: () -> Unit
 ) {
     val portraitCache = remember { PortraitCache(maxEntries = 128) }
@@ -61,7 +65,7 @@ fun AgentProfilePanel(
                 .fillMaxHeight()
                 .width(panelWidth)
         ) {
-            UIContent(agent, allAgents, portraitCache, scrollState, onClose)
+            UIContent(agent, allAgents, worldState, portraitCache, scrollState, onClose)
         }
     }
 }
@@ -70,6 +74,7 @@ fun AgentProfilePanel(
 private fun UIContent(
     agent: AgentRuntime,
     allAgents: List<AgentRuntime>,
+    worldState: WorldState,
     portraitCache: PortraitCache,
     scrollState: androidx.compose.foundation.ScrollState,
     onClose: () -> Unit
@@ -88,11 +93,10 @@ private fun UIContent(
         UISpacer(16)
         PressuresSection(agent = agent)
         UISpacer(16)
-        RelationshipsSection(agent, allAgents, portraitCache)
+        DebugSection(agent, worldState)
     }
 }
 
-@UiComposable
 @Composable
 private fun UISpacer(height: Int) {
     Spacer(modifier = Modifier.height(height.dp))
@@ -133,7 +137,7 @@ private fun BasicInfoSection(agent: AgentRuntime, portraitCache: PortraitCache) 
         Column {
             Text(agent.name, color = Color.White, style = MaterialTheme.typography.titleLarge)
             Text("Villager", color = Color.LightGray, fontSize = 12.sp) // Hardcoded "Villager"
-            Text("Intent: ${agent.currentIntent}", color = Color.Cyan, fontSize = 12.sp)
+            Text("Intent: ${agent.currentIntent::class.simpleName}", color = Color.Cyan, fontSize = 12.sp)
         }
     }
 }
@@ -210,11 +214,8 @@ private fun PressuresSection(agent: AgentRuntime) {
 
             sortedPressures.forEach { (key, value) ->
                 val label = when(key) {
-                    AgentIntent.SeekSleep -> "Sleep"
-                    AgentIntent.SeekFun -> "Fun"
-                    AgentIntent.SeekStability -> "Stability"
-                    AgentIntent.SeekStimulation -> "Stimulation"
-                    else -> key.toString()
+                    is AgentIntent.Work -> "Work"
+                    else -> key::class.simpleName ?: "Unknown"
                 }
                 val isWinner = key == agent.currentIntent
 
@@ -246,103 +247,20 @@ private fun PressuresSection(agent: AgentRuntime) {
 }
 
 @Composable
-private fun RelationshipsSection(
-    agent: AgentRuntime,
-    allAgents: List<AgentRuntime>,
-    portraitCache: PortraitCache
-) {
+private fun DebugSection(agent: AgentRuntime, worldState: WorldState) {
+    val workPressure = agent.transientPressures.entries.find { it.key is AgentIntent.Work }?.value ?: 0f
+    val topPressures = agent.transientPressures.toList()
+        .sortedByDescending { it.second }
+        .take(3)
+        .joinToString { "${it.first::class.simpleName}: %.2f".format(it.second) }
+
+
     Column {
-        Text("Relationships", color = Color.White, style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        val relationships = agent.socialMemory.affinity.filter { it.value != 0f }
-
-        if (relationships.isEmpty()) {
-            Text("No known relationships", color = Color.Gray, fontSize = 14.sp)
-        } else {
-            relationships.forEach { (otherId, affinity) ->
-                val otherAgent = allAgents.find { it.id == otherId }
-                val name = otherAgent?.name ?: "Unknown ($otherId)"
-
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Profile Picture
-                    if (otherAgent != null) {
-                        val spec = otherAgent.profile.appearance ?: fallbackAppearanceSpec(otherAgent.profile.gender, otherAgent.shortId)
-                        val key = PortraitKey(spec, AppearanceVariant.DEFAULT, sizePx = 64)
-                        val portrait = portraitCache.getPortrait(
-                            key = key,
-                            gender = otherAgent.profile.gender,
-                            facingLeft = false
-                        )
-                        Image(
-                            bitmap = portrait,
-                            contentDescription = null,
-                            modifier = Modifier.size(44.dp)
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .background(Color(0xFF2D2D2D), shape = RoundedCornerShape(4.dp))
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(10.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Bottom
-                        ) {
-                            Text(name, color = Color.White, fontSize = 14.sp)
-                            Text(
-                                text = "%.0f".format(affinity),
-                                color = Color.LightGray,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        AffinityBar(affinity)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AffinityBar(affinity: Float) {
-    // Affinity range -100 to 100 -> progress 0.0 to 1.0
-    val progress = ((affinity + 100f) / 200f).coerceIn(0f, 1f)
-    
-    // Interpolate Red -> Yellow -> Green
-    val color = when {
-        progress < 0.5f -> {
-            val t = progress * 2f
-            Color(red = 1f, green = t, blue = 0f)
-        }
-        else -> {
-            val t = (progress - 0.5f) * 2f
-            Color(red = 1f - t, green = 1f, blue = 0f)
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(6.dp)
-            .background(Color(0xFF2D2D2D), shape = RoundedCornerShape(3.dp))
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(progress)
-                .fillMaxHeight()
-                .background(color, shape = RoundedCornerShape(3.dp))
-        )
+        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+        Text("Debug Info", fontWeight = FontWeight.Bold, color = Color.Cyan, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        Text("jobAvailable: ${worldState.transient_hasAvailableWorkplace}", fontSize = 9.sp, color = if (worldState.transient_hasAvailableWorkplace) Color.Green else Color.Red, fontFamily = FontFamily.Monospace)
+        Text("workPressure: %.2f".format(workPressure), fontSize = 9.sp, color = Color.Cyan, fontFamily = FontFamily.Monospace)
+        Text("topPressures: [$topPressures]", fontSize = 9.sp, color = Color.Cyan, fontFamily = FontFamily.Monospace)
     }
 }
 

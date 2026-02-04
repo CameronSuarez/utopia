@@ -1,5 +1,6 @@
 package com.example.utopia.ui
 
+import android.app.Application
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -10,8 +11,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.utopia.data.PersistenceManager
 import com.example.utopia.data.models.ResourceType
 import com.example.utopia.data.models.Structure
 import com.example.utopia.domain.NavGrid
@@ -34,9 +37,10 @@ sealed interface SelectedStructureInfo {
 }
 
 
-class GameViewModel : ViewModel() {
+class GameViewModel(application: Application) : AndroidViewModel(application) {
     val navGrid = NavGrid()
     val worldManager = WorldManager(navGrid)
+    private val persistenceManager = PersistenceManager(application)
 
     // Note: placementController now doesn't strictly need to trigger updateNavGrid immediately,
     // as the game loop will catch the dirty rect and update it batch-style.
@@ -102,6 +106,7 @@ class GameViewModel : ViewModel() {
     var showLotDebug by mutableStateOf(false) // Added for lot overlay
     var showAgentPaths by mutableStateOf(false)
     var showAgentLabels by mutableStateOf(false)
+    var showSocialFields by mutableStateOf(false)
     // REMOVED: var showAgentClearanceDebug by mutableStateOf(false)
     // REMOVED: var showAgentVectorsDebug by mutableStateOf(false)
 
@@ -115,9 +120,23 @@ class GameViewModel : ViewModel() {
 
     init {
         Log.d("StartupHeartbeat", "GameViewModel.init - START")
+        load()
         updateNavGrid() // Initial bake
         startGameLoop()
         Log.d("StartupHeartbeat", "GameViewModel.init - END")
+    }
+
+    fun save() {
+        persistenceManager.save(worldManager)
+    }
+
+    fun load() {
+        persistenceManager.load(worldManager)
+    }
+
+    override fun onCleared() {
+        save()
+        super.onCleared()
     }
 
     private fun updateNavGrid(dirtyRect: Rect? = null) {
