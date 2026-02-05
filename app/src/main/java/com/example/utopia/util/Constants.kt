@@ -36,7 +36,25 @@ object Constants {
 
     // --- AI / Intent Constants ---
     const val INTENT_COMMITMENT_MS = 8000L // 8 seconds of sticking to a task
-    const val MOMENTUM_BIAS = 0.15f        // Extra pressure added to current intent
+    const val INTENT_COMMITMENT_WEIGHT = 0.15f // Extra pressure added to current intent during commitment window
+
+    // --- Needs Tuning Constants ---
+    const val NEEDS_SECONDS_PER_DAY = 420f
+
+    const val NEEDS_SLEEP_DECAY_PER_DAY = 100f
+    const val NEEDS_SLEEP_GAIN_PER_DAY = 400f
+
+    const val NEEDS_SOCIAL_DECAY_PER_DAY = 60f
+    const val NEEDS_SOCIAL_GAIN_PER_DAY = 300f
+
+    const val NEEDS_FUN_DECAY_PER_DAY = 50f
+    const val NEEDS_FUN_GAIN_PER_DAY = 250f
+
+    const val NEEDS_STABILITY_DECAY_PER_DAY = 40f
+    const val NEEDS_STABILITY_GAIN_PER_DAY = 200f
+
+    const val NEEDS_STIMULATION_GAIN_PER_DAY = 70f
+    const val NEEDS_STIMULATION_DECAY_PER_DAY = 300f
 
     // --- Social / Gossip Constants ---
     const val GOSSIP_CHANCE = 0.05f           // Chance per tick for an agent to gossip in a group

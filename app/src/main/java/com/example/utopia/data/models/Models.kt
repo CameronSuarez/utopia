@@ -103,7 +103,6 @@ data class Structure(
         )
     }
 }
-
 @Serializable
 enum class Gender { MALE, FEMALE }
 @Serializable
@@ -172,6 +171,17 @@ data class EmojiSignal(
     val lifeTime: Int = 2 // Ticks it lasts for visibility/processing
 )
 
+data class PoiIndex(
+    val structureRevision: Int = -1,
+    val inventoryRevision: Int = -1,
+    val pois: List<POI> = emptyList(),
+    val incompleteStructures: List<Structure> = emptyList(),
+    val readyConstructionSites: List<Structure> = emptyList(),
+    val sourcesByResource: Map<ResourceType, List<Structure>> = emptyMap(),
+    val sinksByResource: Map<ResourceType, List<Structure>> = emptyMap(),
+    val constructionSitesNeeding: Map<ResourceType, List<Structure>> = emptyMap()
+)
+
 data class WorldState(
     val tiles: Array<Array<TileType>>,
     val structures: List<Structure> = emptyList(),
@@ -179,15 +189,25 @@ data class WorldState(
     val agents: List<AgentRuntime> = emptyList(),
     val props: List<PropInstance> = emptyList(),
     val pois: List<POI> = emptyList(),
+    @Transient val poiIndex: PoiIndex = PoiIndex(),
     val socialFields: List<SocialField> = emptyList(),
     val emojiSignals: List<EmojiSignal> = emptyList(),
     val nextAgentId: Int = 0,
     val roadRevision: Int = 0,
     val structureRevision: Int = 0,
+    val inventoryRevision: Int = 0,
     val version: Int = 15
 ) {
     @Transient
     var transient_hasAvailableWorkplace: Boolean = false
+        private set
+
+    fun withTransientHasAvailableWorkplace(value: Boolean): WorldState {
+        if (transient_hasAvailableWorkplace == value) return this
+        val next = this.copy()
+        next.transient_hasAvailableWorkplace = value
+        return next
+    }
 
     fun copyTiles(): Array<Array<TileType>> = Array(tiles.size) { x -> tiles[x].copyOf() }
 
@@ -275,5 +295,6 @@ data class WorldStateData(
     val emojiSignals: List<EmojiSignal> = emptyList(),
     val nextAgentId: Int = 0,
     val roadRevision: Int = 0,
-    val structureRevision: Int = 0
+    val structureRevision: Int = 0,
+    val inventoryRevision: Int = 0
 )

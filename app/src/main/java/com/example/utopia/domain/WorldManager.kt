@@ -31,6 +31,7 @@ class WorldManager(private val navGrid: NavGrid) {
             AgentGossipSystemWrapper,
             AgentEmojiSystemWrapper,
             AgentRelationshipSystemWrapper,
+            PoiSystem,
             WorldAnalysisSystem,
             AgentIntentSystemWrapper,
             AgentPhysicsWrapper(navGrid),
@@ -97,6 +98,7 @@ class WorldManager(private val navGrid: NavGrid) {
             nextAgentId = state.nextAgentId,
             roadRevision = state.roadRevision,
             structureRevision = state.structureRevision,
+            inventoryRevision = state.inventoryRevision,
             tiles = state.tiles.map { it.toList() }
         )
     }
@@ -111,19 +113,20 @@ class WorldManager(private val navGrid: NavGrid) {
             grid = writeToGrid(grid, structure)
         }
 
-        _worldState.value = WorldState(
+        val baseState = WorldState(
             tiles = loadedTiles,
             structures = data.structures,
             structureGrid = grid,
             agents = data.agents,
             props = data.props,
-            pois = data.pois,
             socialFields = data.socialFields,
             emojiSignals = data.emojiSignals,
             nextAgentId = data.nextAgentId,
             roadRevision = data.roadRevision,
-            structureRevision = data.structureRevision
+            structureRevision = data.structureRevision,
+            inventoryRevision = data.inventoryRevision
         )
+        _worldState.value = PoiSystem.recompute(baseState)
         staticLayerId++
         pendingDirtyRect = null
     }
@@ -412,7 +415,7 @@ class WorldManager(private val navGrid: NavGrid) {
 
         val newState = bakeStructureToWorld(_worldState.value, newStructure)
 
-        var finalState = newState.copy(pois = generatePOIs(newState))
+        var finalState = PoiSystem.recompute(newState)
 
         if (typeId == "HOUSE" && !needsConstruction && existingStructure == null) {
             finalState = spawnVillagersForHouse(newStructure, finalState)
@@ -649,7 +652,7 @@ class WorldManager(private val navGrid: NavGrid) {
                 version = startState.version + 1
             )
 
-            _worldState.value = newState.copy(pois = generatePOIs(newState))
+            _worldState.value = PoiSystem.recompute(newState)
             staticLayerId++
         }
 
@@ -788,7 +791,7 @@ class WorldManager(private val navGrid: NavGrid) {
             structureRevision = if (structChanged) currentState.structureRevision + 1 else currentState.structureRevision,
             version = currentState.version + 1
         )
-        _worldState.value = newState.copy(pois = generatePOIs(newState))
+        _worldState.value = PoiSystem.recompute(newState)
         staticLayerId++
     }
 
@@ -869,21 +872,6 @@ class WorldManager(private val navGrid: NavGrid) {
             tiles = newTiles,
             structureGrid = newGrid
         )
-    }
-
-    private fun generatePOIs(state: WorldState): List<POI> {
-        return state.structures.mapNotNull { s ->
-            try {
-                val poiType = PoiType.valueOf(s.spec.id)
-                POI(
-                    s.id,
-                    poiType,
-                    SerializableOffset(s.x + s.spec.worldWidth / 2, s.y - s.spec.worldHeight / 2) // Center point
-                )
-            } catch (_: IllegalArgumentException) {
-                null // Not a POI
-            }
-        }
     }
 
     private fun validateInvariants() {

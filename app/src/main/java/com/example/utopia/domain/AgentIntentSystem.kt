@@ -3,6 +3,7 @@ package com.example.utopia.domain
 import com.example.utopia.data.models.AgentIntent
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.ResourceType
+import com.example.utopia.data.models.Structure
 import com.example.utopia.data.models.WorldState
 import com.example.utopia.util.Constants
 
@@ -31,21 +32,16 @@ object AgentIntentSystem {
         if (agent.carriedItem != null) {
             val resourceType = agent.carriedItem.type
             // 1. Find a construction site that needs this resource
-            val constructionSite = worldState.structures.find {
-                !it.isComplete && (it.spec.buildCost[resourceType] ?: 0) > (it.inventory[resourceType] ?: 0)
-            }
+            val constructionSite = findConstructionSiteNeedingResource(worldState, resourceType)
             if (constructionSite != null) {
-                pressures[AgentIntent.StoreResource(constructionSite.id)] = 2.0f
+                pressures[AgentIntent.StoreResource(constructionSite.id)] = 1.0f
                 return pressures // Early exit for high priority task
             }
 
             // 2. Find a transformer/consumer that needs this resource
-            val consumer = worldState.structures.find {
-                it.spec.consumes.containsKey(resourceType) &&
-                        (it.inventory[resourceType] ?: 0) < (it.spec.inventoryCapacity[resourceType] ?: 0)
-            }
+            val consumer = findConsumerNeedingResource(worldState, resourceType)
             if (consumer != null) {
-                pressures[AgentIntent.StoreResource(consumer.id)] = 2.0f
+                pressures[AgentIntent.StoreResource(consumer.id)] = 1.0f
                 return pressures // Early exit for high priority task
             }
         }
@@ -62,7 +58,10 @@ object AgentIntentSystem {
 
         // --- Work Pressure ---
         if (agent.workplaceId != null) {
-            pressures[AgentIntent.Work] = 0.8f // High, but not overwhelming pressure
+            val workplace = worldState.structures.find { it.id == agent.workplaceId }
+            if (workplace != null && isWorkPossible(workplace)) {
+                pressures[AgentIntent.Work] = 0.8f // High, but not overwhelming pressure
+            }
         } else {
             // Pressure to seek work if unemployed and a job is available
             if (worldState.transient_hasAvailableWorkplace) {
@@ -76,13 +75,7 @@ object AgentIntentSystem {
             // Priority: Construction > Transformation
             
             // 1. Check for construction needs
-            val constructionSiteNeedingResources = worldState.structures
-                .filter { !it.isComplete }
-                .firstOrNull { site ->
-                    site.spec.buildCost.any { (resource, amount) ->
-                        (site.inventory[resource] ?: 0) < amount
-                    }
-                }
+            val constructionSiteNeedingResources = findAnyConstructionSiteNeedingResources(worldState)
 
             if (constructionSiteNeedingResources != null) {
                 for ((resource, requiredAmount) in constructionSiteNeedingResources.spec.buildCost) {
@@ -99,11 +92,7 @@ object AgentIntentSystem {
 
             // 2. If no construction hauling, check for transformation needs
             if (pressures.keys.none { it is AgentIntent.GetResource }) {
-                 val consumerNeedingResources = worldState.structures.firstOrNull { s ->
-                    s.spec.consumes.isNotEmpty() && s.spec.consumes.any { (resource, _) ->
-                        (s.inventory[resource] ?: 0) < (s.spec.inventoryCapacity[resource] ?: 0)
-                    }
-                }
+                val consumerNeedingResources = findAnyConsumerNeedingResources(worldState)
 
                 if (consumerNeedingResources != null) {
                     for ((resource, _) in consumerNeedingResources.spec.consumes) {
@@ -121,26 +110,111 @@ object AgentIntentSystem {
         
         // --- Construction Pressure ---
         // An agent should only go to construct if the site has the resources it needs.
-        val readyConstructionSite = worldState.structures.find { 
-            !it.isComplete && it.spec.buildCost.all { (res, amount) -> (it.inventory[res] ?: 0) >= amount } 
-        }
+        val readyConstructionSite = findReadyConstructionSite(worldState)
         if (readyConstructionSite != null) {
             pressures[AgentIntent.Construct(readyConstructionSite.id)] = 0.85f
-        }
-
-        // --- Momentum Bias (Fix C) ---
-        val current = agent.currentIntent
-        if (current !is AgentIntent.Idle && current !is AgentIntent.Wandering) {
-            pressures[current] = (pressures[current] ?: 0f) + Constants.MOMENTUM_BIAS
         }
 
         return pressures.filter { it.value > 0.05f } // Ignore trivial pressures
     }
 
-    private fun findSourceForResource(worldState: WorldState, resource: ResourceType) =
-        worldState.structures.find {
+    private fun findSourceForResource(worldState: WorldState, resource: ResourceType): Structure? {
+        val index = worldState.poiIndex
+        if (index.structureRevision == worldState.structureRevision) {
+            return index.sourcesByResource[resource]?.firstOrNull()
+        }
+        return worldState.structures.find {
             (it.inventory[resource] ?: 0) > 0 && it.spec.produces.containsKey(resource)
         }
+    }
+
+    private fun findConstructionSiteNeedingResource(worldState: WorldState, resource: ResourceType): Structure? {
+        val index = worldState.poiIndex
+        if (index.structureRevision == worldState.structureRevision) {
+            return index.constructionSitesNeeding[resource]?.firstOrNull()
+        }
+        return worldState.structures.find {
+            !it.isComplete && (it.spec.buildCost[resource] ?: 0) > (it.inventory[resource] ?: 0)
+        }
+    }
+
+    private fun findAnyConstructionSiteNeedingResources(worldState: WorldState): Structure? {
+        val index = worldState.poiIndex
+        if (index.structureRevision == worldState.structureRevision) {
+            return index.constructionSitesNeeding.values.firstOrNull { it.isNotEmpty() }?.firstOrNull()
+        }
+        return worldState.structures
+            .filter { !it.isComplete }
+            .firstOrNull { site ->
+                site.spec.buildCost.any { (resource, amount) ->
+                    (site.inventory[resource] ?: 0) < amount
+                }
+            }
+    }
+
+    private fun findConsumerNeedingResource(worldState: WorldState, resource: ResourceType): Structure? {
+        val index = worldState.poiIndex
+        if (index.structureRevision == worldState.structureRevision) {
+            return index.sinksByResource[resource]?.firstOrNull()
+        }
+        return worldState.structures.find {
+            it.spec.consumes.containsKey(resource) &&
+                    (it.inventory[resource] ?: 0) < (it.spec.inventoryCapacity[resource] ?: 0)
+        }
+    }
+
+    private fun findAnyConsumerNeedingResources(worldState: WorldState): Structure? {
+        val index = worldState.poiIndex
+        if (index.structureRevision == worldState.structureRevision) {
+            return index.sinksByResource.values.firstOrNull { it.isNotEmpty() }?.firstOrNull()
+        }
+        return worldState.structures.firstOrNull { s ->
+            s.spec.consumes.isNotEmpty() && s.spec.consumes.any { (resource, _) ->
+                (s.inventory[resource] ?: 0) < (s.spec.inventoryCapacity[resource] ?: 0)
+            }
+        }
+    }
+
+    private fun findReadyConstructionSite(worldState: WorldState): Structure? {
+        val index = worldState.poiIndex
+        if (index.structureRevision == worldState.structureRevision) {
+            return index.readyConstructionSites.firstOrNull()
+        }
+        return worldState.structures.find { 
+            !it.isComplete && it.spec.buildCost.all { (res, amount) -> (it.inventory[res] ?: 0) >= amount } 
+        }
+    }
+
+    private fun isWorkPossible(structure: com.example.utopia.data.models.Structure): Boolean {
+        if (!structure.isComplete) return false
+        val produces = structure.spec.produces
+        val consumes = structure.spec.consumes
+        if (produces.isEmpty() && consumes.isEmpty()) return false
+
+        // Production-only buildings
+        if (produces.isNotEmpty() && consumes.isEmpty()) {
+            return produces.all { (type, amount) ->
+                val current = structure.inventory[type] ?: 0
+                val capacity = structure.spec.inventoryCapacity[type] ?: 0
+                current + amount <= capacity
+            }
+        }
+
+        // Transformation buildings (inputs + outputs)
+        if (produces.isNotEmpty() && consumes.isNotEmpty()) {
+            val outputType = produces.keys.first()
+            val outputAmount = produces.values.first()
+            val currentOutput = structure.inventory[outputType] ?: 0
+            val outputCapacity = structure.spec.inventoryCapacity[outputType] ?: 0
+            if (currentOutput + outputAmount > outputCapacity) return false
+
+            return consumes.all { (type, amount) ->
+                (structure.inventory[type] ?: 0) >= amount
+            }
+        }
+
+        return false
+    }
 
     /**
      * Selects a single intent for the agent based on the highest current pressure.
@@ -151,24 +225,25 @@ object AgentIntentSystem {
      * @return The name of the selected intent (e.g., "seek_sleep").
      */
     fun selectIntent(agent: AgentRuntime, nowMs: Long): AgentIntent {
-        // --- Action Commitment Window (Fix A) ---
         val timeSinceStart = nowMs - agent.intentStartTimeMs
-        val isLocked = timeSinceStart < Constants.INTENT_COMMITMENT_MS
-        
-        val pressures = agent.transientPressures
         val currentIntent = agent.currentIntent
 
-        if (isLocked && currentIntent !is AgentIntent.Idle && currentIntent !is AgentIntent.Wandering) {
-            if ((pressures[currentIntent] ?: 0f) > 0.1f) {
-                return currentIntent
+        val adjustedPressures = agent.transientPressures
+            .mapValues { it.value.coerceIn(0f, 1f) }
+            .toMutableMap()
+
+        if (currentIntent !is AgentIntent.Idle && currentIntent !is AgentIntent.Wandering) {
+            if (timeSinceStart < Constants.INTENT_COMMITMENT_MS) {
+                val boosted = (adjustedPressures[currentIntent] ?: 0f) + Constants.INTENT_COMMITMENT_WEIGHT
+                adjustedPressures[currentIntent] = boosted.coerceIn(0f, 1f)
             }
         }
 
-        if (pressures.isEmpty()) {
+        if (adjustedPressures.isEmpty()) {
             return AgentIntent.Idle
         }
 
-        val strongestPressure = pressures.maxByOrNull { it.value }
+        val strongestPressure = adjustedPressures.maxByOrNull { it.value }
 
         return strongestPressure?.key ?: AgentIntent.Wandering
     }

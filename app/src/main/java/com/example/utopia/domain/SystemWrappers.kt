@@ -9,8 +9,7 @@ object WorldAnalysisSystem : SimulationSystem {
             it.isComplete && (it.spec.produces.isNotEmpty() || it.spec.consumes.isNotEmpty()) &&
                     it.spec.capacity > 0 && it.workers.size < it.spec.capacity
         }
-        state.transient_hasAvailableWorkplace = hasAvailableWorkplace
-        return state
+        return state.withTransientHasAvailableWorkplace(hasAvailableWorkplace)
     }
 }
 
@@ -140,7 +139,8 @@ class AgentPhysicsWrapper(private val navGrid: NavGrid) : SimulationSystem {
             agents = state.agents,
             worldState = state,
             navGrid = navGrid,
-            deltaTimeMs = deltaTimeMs
+            deltaTimeMs = deltaTimeMs,
+            nowMs = nowMs
         )
         return state.copy(agents = movedAgents)
     }

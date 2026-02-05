@@ -7,6 +7,7 @@ import com.example.utopia.data.models.InventoryItem
 import com.example.utopia.data.models.WorldState
 
 internal object EconomySystem {
+    private const val CARRY_CAPACITY = 5
 
     /**
      * Entry point for the economy phase.
@@ -85,7 +86,14 @@ internal object EconomySystem {
             }
         }
 
-        return if (changed) state.copy(structures = newStructures) else state
+        return if (changed) {
+            state.copy(
+                structures = newStructures,
+                inventoryRevision = state.inventoryRevision + 1
+            )
+        } else {
+            state
+        }
     }
 
 
@@ -135,7 +143,14 @@ internal object EconomySystem {
             }
         }
     
-        return if (changed) state.copy(structures = newStructures) else state
+        return if (changed) {
+            state.copy(
+                structures = newStructures,
+                inventoryRevision = state.inventoryRevision + 1
+            )
+        } else {
+            state
+        }
     }
 
     private fun updateHauling(worldState: WorldState): WorldState {
@@ -159,12 +174,13 @@ internal object EconomySystem {
                     // Invariant: Source must have stock AND agent must be empty
                     if (currentAmount > 0 && agent.carriedItem == null) {
                         println("ECONOMY_TRACE: Agent ${agent.name} GET ${intent.resource} from ${source.spec.id}")
+                        val takeAmount = minOf(CARRY_CAPACITY, currentAmount)
                         val newInventory = source.inventory.toMutableMap()
-                        newInventory[intent.resource] = currentAmount - 1
+                        newInventory[intent.resource] = currentAmount - takeAmount
                         newStructures[sourceIndex] = source.copy(inventory = newInventory)
 
                         newAgents[agentIndex] = agent.copy(
-                            carriedItem = InventoryItem(intent.resource, 1),
+                            carriedItem = InventoryItem(intent.resource, takeAmount),
                             currentIntent = AgentIntent.Idle,
                             intentStartTimeMs = 0L // Reset to allow immediate re-decision next tick
                         )
@@ -186,12 +202,30 @@ internal object EconomySystem {
                     // Invariant: Sink must have capacity
                     if (currentAmount < capacity) {
                         println("ECONOMY_TRACE: Agent ${agent.name} STORE ${carried.type} to ${sink.spec.id}")
+                        val space = capacity - currentAmount
+                        val depositAmount = minOf(space, carried.quantity)
                         val newInventory = sink.inventory.toMutableMap()
-                        newInventory[resourceType] = currentAmount + 1
+                        newInventory[resourceType] = currentAmount + depositAmount
                         newStructures[sinkIndex] = sink.copy(inventory = newInventory)
 
+                        val remaining = carried.quantity - depositAmount
+                        newAgents[agentIndex] = if (remaining <= 0) {
+                            agent.copy(
+                                carriedItem = null,
+                                currentIntent = AgentIntent.Idle,
+                                intentStartTimeMs = 0L // Reset to allow immediate re-decision next tick
+                            )
+                        } else {
+                            agent.copy(
+                                carriedItem = InventoryItem(resourceType, remaining),
+                                currentIntent = AgentIntent.Idle,
+                                intentStartTimeMs = 0L // Reset to allow immediate re-decision next tick
+                            )
+                        }
+                        changed = true
+                    } else {
+                        // Sink is full: clear intent so the agent can re-evaluate next tick.
                         newAgents[agentIndex] = agent.copy(
-                            carriedItem = null,
                             currentIntent = AgentIntent.Idle,
                             intentStartTimeMs = 0L // Reset to allow immediate re-decision next tick
                         )
@@ -202,7 +236,15 @@ internal object EconomySystem {
             }
         }
 
-        return if (changed) worldState.copy(agents = newAgents, structures = newStructures) else worldState
+        return if (changed) {
+            worldState.copy(
+                agents = newAgents,
+                structures = newStructures,
+                inventoryRevision = worldState.inventoryRevision + 1
+            )
+        } else {
+            worldState
+        }
     }
 
     private fun updateConstruction(worldState: WorldState): WorldState {
@@ -253,7 +295,14 @@ internal object EconomySystem {
             }
         }
 
-        return if (changed) worldState.copy(structures = newStructures) else worldState
+        return if (changed) {
+            worldState.copy(
+                structures = newStructures,
+                inventoryRevision = worldState.inventoryRevision + 1
+            )
+        } else {
+            worldState
+        }
     }
 
     /**

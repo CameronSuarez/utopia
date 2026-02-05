@@ -102,6 +102,7 @@
     "capacity": 2,
     "baselineTileY": 2,
     "providesStability": true,
+    "providesStimulation": true,
     "productionIntervalMs": 5000,
     "maxEffectiveWorkers": 2,
     "produces": {

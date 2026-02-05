@@ -15,15 +15,17 @@ import kotlin.random.Random
 
 private const val DAMPING = 0.985f
 private const val STRIDE_PX = 32f
+private const val TARGET_MARGIN_PX = 16f
 
 internal fun updateAgents(
     agents: List<AgentRuntime>,
     worldState: WorldState,
     navGrid: NavGrid,
-    deltaTimeMs: Long
+    deltaTimeMs: Long,
+    nowMs: Long
 ): List<AgentRuntime> {
     return agents.map { agent ->
-        updateAgentTick(agent, worldState, navGrid, deltaTimeMs)
+        updateAgentTick(agent, worldState, navGrid, deltaTimeMs, nowMs)
     }
 }
 
@@ -31,7 +33,8 @@ private fun updateAgentTick(
     agent: AgentRuntime,
     worldState: WorldState,
     navGrid: NavGrid,
-    deltaTimeMs: Long
+    deltaTimeMs: Long,
+    nowMs: Long
 ): AgentRuntime {
     if (agent.state == AgentState.SOCIALIZING) {
         return agent.copy(
@@ -55,7 +58,7 @@ private fun updateAgentTick(
 
     val intentForce = calculateIntentForce(agent, worldState)
     val separationForce = calculateSeparationForce(agent, worldState.agents)
-    val wanderForce = calculateWanderForce(agent)
+    val wanderForce = calculateWanderForce(agent, nowMs)
 
     val totalForce = intentForce.plus(separationForce).plus(wanderForce)
 
@@ -86,14 +89,14 @@ private fun updateAgentTick(
     val intentSatisfiedState = when (val intent = agent.currentIntent) {
         AgentIntent.SeekSleep -> if (structure?.spec?.providesSleep == true) AgentState.SLEEPING else null
         AgentIntent.SeekFun -> if (structure?.spec?.providesFun == true) AgentState.HAVING_FUN else null
-        AgentIntent.SeekStability -> if (structure?.spec?.id == "STORE") AgentState.TRADING else null
-        AgentIntent.SeekStimulation -> if (structure?.spec?.id == "STORE") AgentState.TRADING else null
-        is AgentIntent.Construct -> if (structure?.id == intent.targetId) AgentState.WORKING else null
-        is AgentIntent.GetResource -> if (structure?.id == intent.targetId) AgentState.WORKING else null
-        is AgentIntent.StoreResource -> if (structure?.id == intent.targetId) AgentState.WORKING else null
+        AgentIntent.SeekStability -> if (structure?.spec?.id == "STORE" || structure?.spec?.id == "WORKSHOP" || structure?.spec?.id == "LUMBERJACK_HUT") AgentState.TRADING else null
+        AgentIntent.SeekStimulation -> if (structure?.spec?.providesStimulation == true) AgentState.TRADING else null
+        is AgentIntent.Construct -> if (isNearTargetStructure(worldState, agent, intent.targetId)) AgentState.WORKING else null
+        is AgentIntent.GetResource -> if (isNearTargetStructure(worldState, agent, intent.targetId)) AgentState.WORKING else null
+        is AgentIntent.StoreResource -> if (isNearTargetStructure(worldState, agent, intent.targetId)) AgentState.WORKING else null
         AgentIntent.Work -> {
             // An agent is only truly WORKING if they have the Work intent AND are at their assigned workplace.
-            if (agent.workplaceId != null && structure?.id == agent.workplaceId) {
+            if (agent.workplaceId != null && isNearTargetStructure(worldState, agent, agent.workplaceId)) {
                 AgentState.WORKING
             } else {
                 null
@@ -120,10 +123,10 @@ private fun updateAgentTick(
 private fun isIntentSatisfied(agent: AgentRuntime, worldState: WorldState): Boolean {
     val structure = worldState.getInfluencingStructure(agent.position.toOffset())
     return when (val intent = agent.currentIntent) {
-        AgentIntent.Work -> structure?.id == agent.workplaceId && agent.workplaceId != null
+        AgentIntent.Work -> agent.workplaceId != null && isNearTargetStructure(worldState, agent, agent.workplaceId)
         AgentIntent.SeekSleep -> {
             if (agent.homeId != null) {
-                structure?.id == agent.homeId
+                isNearTargetStructure(worldState, agent, agent.homeId)
             } else {
                 structure?.spec?.providesSleep == true
             }
@@ -133,11 +136,21 @@ private fun isIntentSatisfied(agent: AgentRuntime, worldState: WorldState): Bool
         AgentIntent.SeekStimulation -> structure?.spec?.providesStimulation == true
         is AgentIntent.GetResource, is AgentIntent.StoreResource -> {
             val targetId = if (intent is AgentIntent.GetResource) intent.targetId else (intent as AgentIntent.StoreResource).targetId
-            structure?.id == targetId
+            isNearTargetStructure(worldState, agent, targetId)
         }
-        is AgentIntent.Construct -> structure?.id == intent.targetId
+        is AgentIntent.Construct -> isNearTargetStructure(worldState, agent, intent.targetId)
         else -> false
     }
+}
+
+private fun isNearTargetStructure(worldState: WorldState, agent: AgentRuntime, targetId: String): Boolean {
+    val target = worldState.structures.find { it.id == targetId } ?: return false
+    val pos = agent.position.toOffset()
+    val footprint = target.getWorldFootprint()
+    return pos.x >= footprint.left - TARGET_MARGIN_PX &&
+            pos.x <= footprint.right + TARGET_MARGIN_PX &&
+            pos.y >= footprint.top - TARGET_MARGIN_PX &&
+            pos.y <= footprint.bottom + TARGET_MARGIN_PX
 }
 
 private fun calculateIntentForce(agent: AgentRuntime, worldState: WorldState): Offset {
@@ -205,21 +218,21 @@ private fun calculateSeparationForce(agent: AgentRuntime, allAgents: List<AgentR
     return push
 }
 
-private fun calculateWanderForce(agent: AgentRuntime): Offset {
+private fun calculateWanderForce(agent: AgentRuntime, nowMs: Long): Offset {
     val isIdleWandering = agent.state == AgentState.IDLE &&
             (agent.currentIntent == AgentIntent.Idle || agent.currentIntent == AgentIntent.Wandering)
     val isFunWandering = agent.state == AgentState.HAVING_FUN && agent.currentIntent == AgentIntent.SeekFun
     val isTradingWandering = agent.state == AgentState.TRADING
 
     if (isIdleWandering) {
-        val seed = agent.id.hashCode().toLong() + (System.currentTimeMillis() / 2000)
+        val seed = agent.id.hashCode().toLong() + (nowMs / 2000)
         val rng = Random(seed)
         return Offset(rng.nextFloat() * 2 - 1, rng.nextFloat() * 2 - 1)
             .times(Constants.WANDER_FORCE * Constants.TILE_SIZE)
     }
 
     if (isFunWandering || isTradingWandering) {
-        val timeBlock = System.currentTimeMillis() / 1500L
+        val timeBlock = nowMs / 1500L
         val seed = agent.id.hashCode().toLong() + timeBlock
         val rng = Random(seed)
         val shouldMove = rng.nextFloat() < 0.33f
