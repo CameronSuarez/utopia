@@ -51,7 +51,6 @@ data class StructureSpec(
     val providesSocial: Boolean = false, // Deprecated: Social is now an emergent behavior
     val providesFun: Boolean = false,
     val providesStability: Boolean = false,
-    val providesStimulation: Boolean = false,
     val productionIntervalMs: Long = 0L,
     val maxEffectiveWorkers: Int? = null,
     val produces: Map<ResourceType, Int> = emptyMap(),
@@ -93,13 +92,25 @@ data class Structure(
     val isComplete: Boolean = true,
     val buildStarted: Boolean = false
 ) {
-    @Transient
     val spec: StructureSpec by lazy { StructureRegistry.get(typeId) }
 
     fun getWorldFootprint(): Rect {
         return Rect(
             offset = Offset(x, y - spec.worldHeight),
             size = androidx.compose.ui.geometry.Size(spec.worldWidth, spec.worldHeight)
+        )
+    }
+
+    /**
+     * Returns the structure's influence area (lot) using the standard ownership margins (2x3 tiles).
+     */
+    fun getInfluenceRect(): Rect {
+        val footprintRect = getWorldFootprint()
+        return Rect(
+            left = footprintRect.left - 2 * Constants.TILE_SIZE,
+            top = footprintRect.top - 3 * Constants.TILE_SIZE,
+            right = footprintRect.right + 2 * Constants.TILE_SIZE,
+            bottom = footprintRect.bottom + 3 * Constants.TILE_SIZE
         )
     }
 }
@@ -114,9 +125,9 @@ data class AgentProfile(val gender: Gender = Gender.MALE, val appearance: Appear
 enum class AppearanceVariant { DEFAULT } 
 
 @Serializable
-enum class AgentState { IDLE, TRAVELING, SLEEPING, SOCIALIZING, WORKING, HAVING_FUN, TRADING }
+enum class AgentState { IDLE, TRAVELING, SLEEPING, SOCIALIZING, WORKING, HAVING_FUN }
 @Serializable
-enum class PoiType { HOUSE, STORE, WORKSHOP, CASTLE, PLAZA, TAVERN, LUMBERJACK_HUT }
+enum class PoiType { HOUSE, SAWMILL, CASTLE, PLAZA, TAVERN, LUMBERJACK_HUT }
 @Serializable
 data class POI(val id: String, val type: PoiType, val pos: SerializableOffset)
 @Serializable
@@ -139,10 +150,7 @@ data class Needs(
     val sleep: Float,       // [0, 100]
     val stability: Float,   // [0, 100]
     val social: Float,      // [0, 100]
-    val `fun`: Float,         // [0, 100]
-
-    // Destabilizing
-    val stimulation: Float  // [0, 100]
+    val `fun`: Float         // [0, 100]
 )
 
 @Serializable
@@ -198,17 +206,6 @@ data class WorldState(
     val inventoryRevision: Int = 0,
     val version: Int = 15
 ) {
-    @Transient
-    var transient_hasAvailableWorkplace: Boolean = false
-        private set
-
-    fun withTransientHasAvailableWorkplace(value: Boolean): WorldState {
-        if (transient_hasAvailableWorkplace == value) return this
-        val next = this.copy()
-        next.transient_hasAvailableWorkplace = value
-        return next
-    }
-
     fun copyTiles(): Array<Array<TileType>> = Array(tiles.size) { x -> tiles[x].copyOf() }
 
     fun getTileAtWorld(pos: Offset): TileType {
@@ -220,29 +217,13 @@ data class WorldState(
             TileType.GRASS_LIGHT
         }
     }
-    fun getStructureAt(pos: Offset): Structure? {
-        return structures.firstOrNull {
-            val r = it.getWorldFootprint()
-            pos.x >= r.left &&
-                    pos.x <= r.right &&
-                    pos.y >= r.top &&
-                    pos.y <= r.bottom
-        }
-    }
     /**
      * Returns the structure whose influence area (lot) contains the given world position.
      * Uses the standard ownership margins (2x3 tiles).
      */
     fun getInfluencingStructure(pos: Offset): Structure? {
         return structures.firstOrNull { s ->
-            val footprint = s.getWorldFootprint()
-            val influenceRect = Rect(
-                left = footprint.left - 2 * Constants.TILE_SIZE,
-                top = footprint.top - 3 * Constants.TILE_SIZE,
-                right = footprint.right + 2 * Constants.TILE_SIZE,
-                bottom = footprint.bottom + 3 * Constants.TILE_SIZE
-            )
-            influenceRect.contains(pos)
+            s.getInfluenceRect().contains(pos)
         }
     }
 

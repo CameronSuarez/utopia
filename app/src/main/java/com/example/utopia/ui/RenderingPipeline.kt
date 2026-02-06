@@ -14,8 +14,6 @@ data class RenderContext(
     val camera: Camera2D,
     val timeMs: Long,
     val groundBitmap: ImageBitmap?,
-    val roadBitmap: ImageBitmap?,
-    val roadAsset: ImageBitmap,
     val structureAssets: StructureAssets,
     val propAssets: PropAssets,
     val emojiFxAssets: EmojiFxAssets,

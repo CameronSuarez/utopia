@@ -48,10 +48,8 @@ fun CityScreen(viewModel: GameViewModel) {
     val grass5 = ImageBitmap.imageResource(R.drawable.grass5)
     val grass6 = ImageBitmap.imageResource(R.drawable.grass6)
     val grassBitmaps = listOf(grass1, grass2, grass3, grass4, grass5, grass6)
-    val roadBitmapAsset = ImageBitmap.imageResource(R.drawable.road)
 
     val groundBitmap = rememberGroundCache(worldState, grassBitmaps)
-    val roadBitmap = rememberRoadCache(worldState, roadBitmapAsset)
     val agentNameById = remember(worldState.agents) { worldState.agents.associate { it.id to it.name } }
 
     val houseLabelPaint = remember {
@@ -66,19 +64,17 @@ fun CityScreen(viewModel: GameViewModel) {
 
     val houseBitmap = ImageBitmap.imageResource(R.drawable.house1)
     val tavernBitmap = ImageBitmap.imageResource(R.drawable.tavern)
-    val workshopBitmap = ImageBitmap.imageResource(R.drawable.workshop)
-    val storeBitmap = ImageBitmap.imageResource(R.drawable.store)
+    val sawmillBitmap = ImageBitmap.imageResource(R.drawable.sawmill)
     val plazaBitmap = ImageBitmap.imageResource(R.drawable.plaza)
     val constructionSiteBitmap = ImageBitmap.imageResource(R.drawable.construction_site)
     val lumberjackHutBitmap = ImageBitmap.imageResource(R.drawable.lumberjack_hut)
 
-    val structureAssets = remember(houseLabelPaint, houseBitmap, tavernBitmap, workshopBitmap, storeBitmap, plazaBitmap, constructionSiteBitmap, lumberjackHutBitmap) {
+    val structureAssets = remember(houseLabelPaint, houseBitmap, tavernBitmap, sawmillBitmap, plazaBitmap, constructionSiteBitmap, lumberjackHutBitmap) {
         StructureAssets(
             houseLabelPaint = houseLabelPaint,
             houseBitmap = houseBitmap,
             tavernBitmap = tavernBitmap,
-            workshopBitmap = workshopBitmap,
-            storeBitmap = storeBitmap,
+            sawmillBitmap = sawmillBitmap,
             plazaBitmap = plazaBitmap,
             constructionSiteBitmap = constructionSiteBitmap,
             lumberjackHutBitmap = lumberjackHutBitmap
@@ -135,10 +131,10 @@ fun CityScreen(viewModel: GameViewModel) {
                             when (event.type) {
                                 PointerEventType.Press -> {
                                     if (pc.state != PlacementState.IDLE) {
-                                        pc.beginPointer(pc.activeTool ?: StructureRegistry.get("ROAD"), position, viewModel.cameraOffset)
+                                        pc.beginPointer(pc.activeTool ?: return@awaitPointerEventScope, position, viewModel.cameraOffset)
                                         change.consume()
                                     }
-                                }
+                                 }
                                 PointerEventType.Move -> {
                                     if (pc.state != PlacementState.IDLE) {
                                         pc.movePointer(position, viewModel.cameraOffset)
@@ -203,13 +199,11 @@ fun CityScreen(viewModel: GameViewModel) {
                     )
                 }
         ) {
-            val renderContext = remember(camera, timeMs, groundBitmap, roadBitmap, roadBitmapAsset, structureAssets, propAssets, emojiFxAssets, agentNameById, viewModel.showNavGridDebug, viewModel.showAgentPaths, viewModel.showSocialFields, viewModel.navGrid) {
+            val renderContext = remember(camera, timeMs, groundBitmap, structureAssets, propAssets, emojiFxAssets, agentNameById, viewModel.showNavGridDebug, viewModel.showAgentPaths, viewModel.showSocialFields, viewModel.navGrid) {
                 RenderContext(
                     camera = camera,
                     timeMs = timeMs,
                     groundBitmap = groundBitmap,
-                    roadBitmap = roadBitmap,
-                    roadAsset = roadBitmapAsset,
                     structureAssets = structureAssets,
                     propAssets = propAssets,
                     emojiFxAssets = emojiFxAssets,
@@ -233,7 +227,7 @@ fun CityScreen(viewModel: GameViewModel) {
             ) {
                 val sceneSnapshot = SceneSnapshot(
                     worldState = worldState,
-                    liveRoadTiles = pc.liveRoadTiles,
+                    liveRoadTiles = emptyList(),
                     visibleWorldObjectsYSorted = buildVisibleWorldObjects(renderContext, SceneSnapshot(worldState), size)
                 )
 
@@ -346,9 +340,8 @@ fun ResourceHud(resources: Map<ResourceType, Int>) {
 @Composable
 private fun PlacementStatus(pc: PlacementController) {
     val statusText = when (pc.state) {
-        PlacementState.BRUSHING -> "BRUSHING..."
         PlacementState.DRAGGING_GHOST -> if (pc.movingStructure != null) "DRAG TO MOVE..." else "RELEASE TO PLACE"
-        PlacementState.ARMED_STROKE -> "TAP TO START"
+        PlacementState.ARMED -> "TAP TO START"
         else -> ""
     }
 

@@ -94,7 +94,7 @@ fun BuildToolbar(pc: PlacementController, cameraOffset: Offset) {
                                         pc.movePointer(currentPosInRoot, cameraOffset)
                                         change.consume()
                                     }
-                                }
+                                 }
                             }
                         }
                 ) {
@@ -129,19 +129,9 @@ fun WorldGhostPreview(pc: PlacementController, camera: Camera2D) {
     val ghostWorldSize: Size
     val ghostAnchorWorld: Offset
 
-    if (spec.behavior == PlacementBehavior.STROKE) {
-        ghostWorldSize = Size(Constants.TILE_SIZE, Constants.TILE_SIZE)
-        
-        val tileOffsetNudge = Constants.TILE_SIZE * 0.5f
-        val nudgedWorldPos = worldPos + Offset(tileOffsetNudge, tileOffsetNudge)
-        val snappedTile = WorldGridMath.worldToTile(nudgedWorldPos)
-        
-        ghostAnchorWorld = WorldGridMath.tileToWorld(snappedTile)
-        
-    } else {
-        ghostWorldSize = Size(spec.worldWidth, spec.worldHeight)
-        ghostAnchorWorld = worldPos
-    }
+    ghostWorldSize = Size(spec.worldWidth, spec.worldHeight)
+    ghostAnchorWorld = worldPos
+    
 
     val screenPos = worldToScreen(ghostAnchorWorld, camera)
     val screenSize = worldSizeToScreen(ghostWorldSize, camera)
@@ -149,9 +139,6 @@ fun WorldGhostPreview(pc: PlacementController, camera: Camera2D) {
     val color = when (pc.state) {
         PlacementState.DRAGGING_GHOST -> {
             if (pc.isValid) Color.Cyan.copy(alpha = 0.5f) else Color.Red.copy(alpha = 0.5f)
-        }
-        PlacementState.BRUSHING -> {
-            Color(0xFF1de9b6).copy(alpha = 0.6f) 
         }
         else -> {
             if (pc.isValid) Color.Cyan.copy(alpha = 0.4f) else Color.Red.copy(alpha = 0.4f)

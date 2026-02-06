@@ -18,11 +18,11 @@ class SimulationPipeline(
     }
 
     private fun validateOrderInvariants() {
-        val worldAnalysisIndex = systems.indexOf(WorldAnalysisSystem)
-        val agentIntentIndex = systems.indexOf(AgentIntentSystemWrapper)
+        val poiIndex = systems.indexOf(PoiSystem)
+        val decisionIndex = systems.indexOf(AgentDecisionSystem)
 
-        require(worldAnalysisIndex != -1 && agentIntentIndex != -1 && worldAnalysisIndex < agentIntentIndex) {
-            "Simulation pipeline order invariant violated: WorldAnalysisSystem must run before AgentIntentSystemWrapper."
+        require(poiIndex != -1 && decisionIndex != -1 && poiIndex < decisionIndex) {
+            "Simulation pipeline order invariant violated: PoiSystem must run before AgentDecisionSystem."
         }
     }
 }

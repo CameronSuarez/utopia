@@ -4,13 +4,14 @@ import android.util.Log
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import com.example.utopia.BuildConfig
 import com.example.utopia.data.models.PropInstance
 import com.example.utopia.data.models.PropType
 import com.example.utopia.data.models.Structure
 import com.example.utopia.data.models.TileType
 import com.example.utopia.util.Constants
 
-private const val ENABLE_INCREMENTAL_VALIDATION = true // Set to false for production performance
+private val ENABLE_INCREMENTAL_VALIDATION = BuildConfig.DEBUG
 private const val USE_DISTANCE_FIELD = true // Toggle for clearance optimization
 
 /**

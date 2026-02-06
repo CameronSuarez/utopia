@@ -1,6 +1,5 @@
 package com.example.utopia.domain
 
-import com.example.utopia.data.models.TileType
 import com.example.utopia.data.models.WorldState
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.util.Constants
@@ -15,10 +14,8 @@ object AgentNeedsSystem {
         val decayFactor = deltaTime / Constants.NEEDS_SECONDS_PER_DAY
 
         val pos = agent.position.toOffset()
-        val tile = worldState.getTileAtWorld(pos)
         val structure = worldState.getInfluencingStructure(pos)
 
-        val onRoad = tile == TileType.ROAD
         val hasInfluencingStructure = structure != null
 
         // Fulfillments based on presence (Semantic Tiles and Structures)
@@ -29,8 +26,6 @@ object AgentNeedsSystem {
 
         val fulfillsFun = hasInfluencingStructure && structure.spec.providesFun
         val fulfillsStability = hasInfluencingStructure && structure.spec.providesStability
-        val fulfillsStimulation = (hasInfluencingStructure && structure.spec.providesStimulation) || onRoad
-
         val updatedNeeds = needs.copy(
             sleep = calculateNeed(
                 needs.sleep,
@@ -58,13 +53,6 @@ object AgentNeedsSystem {
                 fulfillsStability,
                 Constants.NEEDS_STABILITY_GAIN_PER_DAY,
                 Constants.NEEDS_STABILITY_DECAY_PER_DAY,
-                decayFactor
-            ),
-            stimulation = calculateNeed(
-                needs.stimulation,
-                !fulfillsStimulation,
-                Constants.NEEDS_STIMULATION_GAIN_PER_DAY,
-                Constants.NEEDS_STIMULATION_DECAY_PER_DAY,
                 decayFactor
             )
         )

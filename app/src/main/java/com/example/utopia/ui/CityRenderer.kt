@@ -20,7 +20,6 @@ fun DrawScope.drawCity(
     snapshot: SceneSnapshot,
     layers: List<RenderLayer> = listOf(
         GroundLayer(),
-        RoadLayer(),
         WorldObjectLayer(),
         DebugOverlayLayer()
     )

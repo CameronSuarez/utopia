@@ -4,27 +4,51 @@ import com.example.utopia.data.models.AgentIntent
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.AgentState
 import com.example.utopia.data.models.InventoryItem
+import com.example.utopia.data.models.Structure
 import com.example.utopia.data.models.WorldState
 
 internal object EconomySystem {
     private const val CARRY_CAPACITY = 5
+    private const val SINK_RETARGET_COOLDOWN_MS = 1_000L
+
+    private data class EconomyStepResult(
+        val state: WorldState,
+        val inventoryChanged: Boolean
+    )
 
     /**
      * Entry point for the economy phase.
      * Logic order is preserved to allow resource flow (Prod -> Haul -> Trans/Const) in a single tick.
      */
-    fun processEconomy(worldState: WorldState, deltaTimeMs: Long): WorldState {
-        val stateWithHauling = updateHauling(worldState)
-        val stateWithProduction = updateProduction(stateWithHauling, deltaTimeMs)
-        val stateWithTransformation = updateTransformation(stateWithProduction)
-        return updateConstruction(stateWithTransformation)
+    fun processEconomy(worldState: WorldState, deltaTimeMs: Long, nowMs: Long): WorldState {
+        var inventoryChanged = false
+
+        val haulResult = updateHauling(worldState, nowMs)
+        inventoryChanged = inventoryChanged || haulResult.inventoryChanged
+
+        val productionResult = updateProduction(haulResult.state, deltaTimeMs)
+        inventoryChanged = inventoryChanged || productionResult.inventoryChanged
+
+        val transformResult = updateTransformation(productionResult.state)
+        inventoryChanged = inventoryChanged || transformResult.inventoryChanged
+
+        val constructionResult = updateConstruction(transformResult.state)
+        inventoryChanged = inventoryChanged || constructionResult.inventoryChanged
+
+        return if (inventoryChanged) {
+            constructionResult.state.copy(
+                inventoryRevision = constructionResult.state.inventoryRevision + 1
+            )
+        } else {
+            constructionResult.state
+        }
     }
 
-    private fun updateProduction(state: WorldState, deltaTimeMs: Long): WorldState {
+    private fun updateProduction(state: WorldState, deltaTimeMs: Long): EconomyStepResult {
         val producingStructures = state.structures.filter {
             it.isComplete && it.spec.produces.isNotEmpty() && it.spec.consumes.isEmpty()
         }
-        if (producingStructures.isEmpty()) return state
+        if (producingStructures.isEmpty()) return EconomyStepResult(state, inventoryChanged = false)
 
         val newStructures = state.structures.toMutableList()
         var changed = false
@@ -87,21 +111,18 @@ internal object EconomySystem {
         }
 
         return if (changed) {
-            state.copy(
-                structures = newStructures,
-                inventoryRevision = state.inventoryRevision + 1
-            )
+            EconomyStepResult(state.copy(structures = newStructures), inventoryChanged = true)
         } else {
-            state
+            EconomyStepResult(state, inventoryChanged = false)
         }
     }
 
 
-    private fun updateTransformation(state: WorldState): WorldState {
+    private fun updateTransformation(state: WorldState): EconomyStepResult {
         val workingAgents = state.agents.filter {
             it.state == AgentState.WORKING && it.workplaceId != null
         }
-        if (workingAgents.isEmpty()) return state
+        if (workingAgents.isEmpty()) return EconomyStepResult(state, inventoryChanged = false)
     
         val newStructures = state.structures.toMutableList()
         var changed = false
@@ -128,7 +149,7 @@ internal object EconomySystem {
             val canConsume = consumesSpec.all { (resource, amount) ->
                 (workplace.inventory[resource] ?: 0) >= amount
             }
-    
+
             if (canConsume) {
                 val newInventory = workplace.inventory.toMutableMap()
 
@@ -144,25 +165,23 @@ internal object EconomySystem {
         }
     
         return if (changed) {
-            state.copy(
-                structures = newStructures,
-                inventoryRevision = state.inventoryRevision + 1
-            )
+            EconomyStepResult(state.copy(structures = newStructures), inventoryChanged = true)
         } else {
-            state
+            EconomyStepResult(state, inventoryChanged = false)
         }
     }
 
-    private fun updateHauling(worldState: WorldState): WorldState {
+    private fun updateHauling(worldState: WorldState, nowMs: Long): EconomyStepResult {
         var changed = false
         val newAgents = worldState.agents.toMutableList()
         val newStructures = worldState.structures.toMutableList()
+        val structureById = worldState.structures.associateBy { it.id }
 
         for ((agentIndex, agent) in worldState.agents.withIndex()) {
             val intent = agent.currentIntent
             // Note: EconomySystem does not know about movement. It checks the high-level state
             // or preconditions provided by the snapshot.
-            if (!isIntentSatisfied(agent, worldState)) continue
+            if (!isIntentSatisfied(agent, structureById)) continue
 
             when (intent) {
                 is AgentIntent.GetResource -> {
@@ -197,7 +216,11 @@ internal object EconomySystem {
 
                     val resourceType = carried.type
                     val currentAmount = sink.inventory[resourceType] ?: 0
-                    val capacity = sink.spec.inventoryCapacity[resourceType] ?: 0
+                    val capacity = if (!sink.isComplete) {
+                        sink.spec.buildCost[resourceType] ?: 0
+                    } else {
+                        sink.spec.inventoryCapacity[resourceType] ?: 0
+                    }
 
                     // Invariant: Sink must have capacity
                     if (currentAmount < capacity) {
@@ -209,27 +232,53 @@ internal object EconomySystem {
                         newStructures[sinkIndex] = sink.copy(inventory = newInventory)
 
                         val remaining = carried.quantity - depositAmount
-                        newAgents[agentIndex] = if (remaining <= 0) {
-                            agent.copy(
+                        if (remaining <= 0) {
+                            newAgents[agentIndex] = agent.copy(
                                 carriedItem = null,
                                 currentIntent = AgentIntent.Idle,
-                                intentStartTimeMs = 0L // Reset to allow immediate re-decision next tick
+                                intentStartTimeMs = 0L,
+                                lastFailedSinkId = null,
+                                lastFailedSinkUntilMs = 0L
                             )
                         } else {
-                            agent.copy(
+                            val nextSink = AgentDecisionSystem.findStoreTargetForResource(
+                                worldState,
+                                resourceType,
+                                excludeId = sink.id,
+                                requireCapacity = true
+                            )
+                            val nextIntent = nextSink?.let { AgentIntent.StoreResource(it.id) } ?: intent
+                            newAgents[agentIndex] = agent.copy(
                                 carriedItem = InventoryItem(resourceType, remaining),
-                                currentIntent = AgentIntent.Idle,
-                                intentStartTimeMs = 0L // Reset to allow immediate re-decision next tick
+                                currentIntent = nextIntent,
+                                intentStartTimeMs = if (nextIntent != intent) 0L else agent.intentStartTimeMs,
+                                lastFailedSinkId = null,
+                                lastFailedSinkUntilMs = 0L
                             )
                         }
                         changed = true
                     } else {
-                        // Sink is full: clear intent so the agent can re-evaluate next tick.
-                        newAgents[agentIndex] = agent.copy(
-                            currentIntent = AgentIntent.Idle,
-                            intentStartTimeMs = 0L // Reset to allow immediate re-decision next tick
+                        val nextSink = AgentDecisionSystem.findStoreTargetForResource(
+                            worldState,
+                            resourceType,
+                            excludeId = sink.id,
+                            requireCapacity = true
                         )
-                        changed = true
+                        if (nextSink != null) {
+                            newAgents[agentIndex] = agent.copy(
+                                currentIntent = AgentIntent.StoreResource(nextSink.id),
+                                intentStartTimeMs = 0L,
+                                lastFailedSinkId = sink.id,
+                                lastFailedSinkUntilMs = nowMs + SINK_RETARGET_COOLDOWN_MS
+                            )
+                            changed = true
+                        } else {
+                            newAgents[agentIndex] = agent.copy(
+                                lastFailedSinkId = sink.id,
+                                lastFailedSinkUntilMs = nowMs + SINK_RETARGET_COOLDOWN_MS
+                            )
+                            changed = true
+                        }
                     }
                 }
                 else -> {}
@@ -237,17 +286,13 @@ internal object EconomySystem {
         }
 
         return if (changed) {
-            worldState.copy(
-                agents = newAgents,
-                structures = newStructures,
-                inventoryRevision = worldState.inventoryRevision + 1
-            )
+            EconomyStepResult(worldState.copy(agents = newAgents, structures = newStructures), inventoryChanged = true)
         } else {
-            worldState
+            EconomyStepResult(worldState, inventoryChanged = false)
         }
     }
 
-    private fun updateConstruction(worldState: WorldState): WorldState {
+    private fun updateConstruction(worldState: WorldState): EconomyStepResult {
         var changed = false
         val newStructures = worldState.structures.toMutableList()
 
@@ -259,31 +304,31 @@ internal object EconomySystem {
                 intent is AgentIntent.Construct && intent.targetId == structure.id
             }
 
-            if (builders.isNotEmpty()) {
-                var updatedStructure = structure
+            var updatedStructure = structure
 
-                // Consume-all-at-start logic
-                if (!structure.buildStarted) {
-                    val requiredResources = structure.spec.buildCost
-                    val hasAllResources = requiredResources.all { (resource, amount) ->
-                        (structure.inventory[resource] ?: 0) >= amount
-                    }
-
-                    if (hasAllResources) {
-                        val newInventory = structure.inventory.toMutableMap()
-                        requiredResources.forEach { (resource, amount) ->
-                            newInventory[resource] = (newInventory[resource] ?: 0) - amount
-                        }
-                        updatedStructure = structure.copy(
-                            inventory = newInventory,
-                            buildStarted = true
-                        )
-                    } else {
-                        // Cannot start construction yet
-                        continue
-                    }
+            // Consume-all-at-start logic
+            if (!structure.buildStarted) {
+                val requiredResources = structure.spec.buildCost
+                val hasAllResources = requiredResources.all { (resource, amount) ->
+                    (structure.inventory[resource] ?: 0) >= amount
                 }
 
+                if (hasAllResources) {
+                    val newInventory = structure.inventory.toMutableMap()
+                    requiredResources.forEach { (resource, amount) ->
+                        newInventory[resource] = (newInventory[resource] ?: 0) - amount
+                    }
+                    updatedStructure = structure.copy(
+                        inventory = newInventory,
+                        buildStarted = true
+                    )
+                } else {
+                    // Cannot start construction yet
+                    continue
+                }
+            }
+
+            if (builders.isNotEmpty()) {
                 // Progress logic
                 val newProgress = updatedStructure.buildProgress + builders.size * 0.1f // arbitrary progress rate
                 if (newProgress >= 100f) {
@@ -292,16 +337,45 @@ internal object EconomySystem {
                     newStructures[structureIndex] = updatedStructure.copy(buildProgress = newProgress)
                 }
                 changed = true
+            } else if (updatedStructure.buildStarted) {
+                // If resources are delivered but no builders are present, complete immediately.
+                newStructures[structureIndex] = updatedStructure.copy(buildProgress = 100f, isComplete = true)
+                changed = true
             }
         }
 
         return if (changed) {
-            worldState.copy(
-                structures = newStructures,
-                inventoryRevision = worldState.inventoryRevision + 1
-            )
+            EconomyStepResult(worldState.copy(structures = newStructures), inventoryChanged = true)
         } else {
-            worldState
+            EconomyStepResult(worldState, inventoryChanged = false)
+        }
+    }
+
+    internal fun isOutputCapped(structure: Structure): Boolean {
+        val producesSpec = structure.spec.produces
+        val consumesSpec = structure.spec.consumes
+        if (producesSpec.isEmpty()) return false
+
+        if (consumesSpec.isEmpty()) {
+            return producesSpec.any { (type, amount) ->
+                val currentAmount = structure.inventory[type] ?: 0
+                val capacity = structure.spec.inventoryCapacity[type] ?: 0
+                currentAmount + amount > capacity
+            }
+        }
+
+        val outputType = producesSpec.keys.first()
+        val outputAmount = producesSpec.values.first()
+        val currentOutputAmount = structure.inventory[outputType] ?: 0
+        val outputCapacity = structure.spec.inventoryCapacity[outputType] ?: 0
+        return currentOutputAmount + outputAmount > outputCapacity
+    }
+
+    internal fun isMissingInputs(structure: Structure): Boolean {
+        val consumesSpec = structure.spec.consumes
+        if (consumesSpec.isEmpty()) return false
+        return consumesSpec.any { (type, amount) ->
+            (structure.inventory[type] ?: 0) < amount
         }
     }
 
@@ -310,13 +384,17 @@ internal object EconomySystem {
      * Duplicate logic from AgentPhysics for now to avoid circular dependencies, 
      * though ideally this would be part of a shared Perception/Spatial layer.
      */
-    private fun isIntentSatisfied(agent: AgentRuntime, worldState: WorldState): Boolean {
-        val structure = worldState.getInfluencingStructure(agent.position.toOffset())
-        return when (val intent = agent.currentIntent) {
-            is AgentIntent.GetResource -> structure?.id == intent.targetId
-            is AgentIntent.StoreResource -> structure?.id == intent.targetId
-            is AgentIntent.Construct -> structure?.id == intent.targetId
-            else -> false
+    private fun isIntentSatisfied(
+        agent: AgentRuntime,
+        structureById: Map<String, Structure>
+    ): Boolean {
+        val targetId = when (val intent = agent.currentIntent) {
+            is AgentIntent.GetResource -> intent.targetId
+            is AgentIntent.StoreResource -> intent.targetId
+            is AgentIntent.Construct -> intent.targetId
+            else -> return false
         }
+        val target = structureById[targetId] ?: return false
+        return target.getInfluenceRect().contains(agent.position.toOffset())
     }
 }

@@ -33,7 +33,7 @@ class WorldManager(private val navGrid: NavGrid) {
             AgentRelationshipSystemWrapper,
             PoiSystem,
             WorldAnalysisSystem,
-            AgentIntentSystemWrapper,
+            AgentDecisionSystem,
             AgentPhysicsWrapper(navGrid),
             EconomySystemWrapper,
             StaleTargetCleanupSystem
@@ -133,11 +133,18 @@ class WorldManager(private val navGrid: NavGrid) {
 
     fun advanceTick(deltaTimeMs: Long, nowMs: Long) {
         val oldState = _worldState.value
+        val finalState = computeNextState(oldState, deltaTimeMs, nowMs)
+        if (finalState !== oldState) {
+            _worldState.value = finalState
+        }
+    }
+
+    fun computeNextState(oldState: WorldState, deltaTimeMs: Long, nowMs: Long): WorldState {
         val newState = simulationPipeline.run(oldState, deltaTimeMs, nowMs)
 
         val newlyCompletedHouses = newState.structures.filter { newStructure ->
             newStructure.typeId == "HOUSE" && newStructure.isComplete &&
-                    (oldState.structures.find { it.id == newStructure.id }?.isComplete == false)
+                (oldState.structures.find { it.id == newStructure.id }?.isComplete == false)
         }
 
         var finalState = newState
@@ -147,7 +154,11 @@ class WorldManager(private val navGrid: NavGrid) {
             }
         }
 
-        _worldState.value = finalState
+        return finalState
+    }
+
+    fun applyState(newState: WorldState) {
+        _worldState.value = newState
     }
 
     fun addAgent(agent: AgentRuntime) {
@@ -400,7 +411,7 @@ class WorldManager(private val navGrid: NavGrid) {
 
         val spec = StructureRegistry.get(typeId)
 
-        val starterBuildings = listOf("HOUSE", "LUMBERJACK_HUT", "WORKSHOP")
+        val starterBuildings = listOf("HOUSE", "LUMBERJACK_HUT", "SAWMILL")
         val isFirstOfKind = starterBuildings.contains(typeId) && _worldState.value.structures.none { it.spec.id == typeId }
         val needsConstruction = existingStructure == null && spec.buildCost.isNotEmpty() && !isFirstOfKind
 
@@ -511,7 +522,7 @@ class WorldManager(private val navGrid: NavGrid) {
             val availableWorkplace = currentState.structures.find { structure ->
                 val spec = structure.spec
                 val assignedWorkers = workersByWorkplace[structure.id]?.size ?: 0
-                (spec.id == "LUMBERJACK_HUT" || spec.id == "WORKSHOP") && spec.capacity > 0 && assignedWorkers < spec.capacity
+                (spec.id == "LUMBERJACK_HUT" || spec.id == "SAWMILL") && spec.capacity > 0 && assignedWorkers < spec.capacity
             }
             availableWorkplace?.id
         } else {
@@ -538,8 +549,7 @@ class WorldManager(private val navGrid: NavGrid) {
                 sleep = random.nextFloat() * 20f + 70f,
                 stability = random.nextFloat() * 20f + 70f,
                 social = random.nextFloat() * 20f + 70f,
-                `fun` = random.nextFloat() * 20f + 70f,
-                stimulation = random.nextFloat() * 20f
+                `fun` = random.nextFloat() * 20f + 70f
             ),
             socialMemory = SocialMemory()
         )

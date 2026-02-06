@@ -64,22 +64,20 @@ fun buildVisibleWorldObjects(
     
     worldState.structures.forEach { structure ->
         val spec = structure.spec
-        if (spec.id != "ROAD") {
-            val bounds = Rect(
-                structure.x,
-                structure.y - spec.worldHeight,
-                structure.x + spec.worldWidth,
-                structure.y + spec.worldHeight
-            )
-            val item = RenderItemRef(
-                kind = RenderItemKind.STRUCTURE,
-                item = structure,
-                depthY = structureBaselineY(structure),
-                depthX = structure.x + spec.worldWidth / 2f,
-                tieBreak = structure.id.hashCode()
-            )
-            index.insert(item, bounds)
-        }
+        val bounds = Rect(
+            structure.x,
+            structure.y - spec.worldHeight,
+            structure.x + spec.worldWidth,
+            structure.y + spec.worldHeight
+        )
+        val item = RenderItemRef(
+            kind = RenderItemKind.STRUCTURE,
+            item = structure,
+            depthY = structureBaselineY(structure),
+            depthX = structure.x + spec.worldWidth / 2f,
+            tieBreak = structure.id.hashCode()
+        )
+        index.insert(item, bounds)
     }
 
     worldState.props.forEach { prop ->
@@ -136,15 +134,6 @@ fun buildVisibleWorldObjects(
 class GroundLayer : RenderLayer {
     override fun DrawScope.draw(context: RenderContext, snapshot: SceneSnapshot) {
         drawGround(context.camera, context.groundBitmap)
-    }
-}
-
-class RoadLayer : RenderLayer {
-    override fun DrawScope.draw(context: RenderContext, snapshot: SceneSnapshot) {
-        context.roadBitmap?.let { drawRoadBitmap(it, context.camera) }
-        if (snapshot.liveRoadTiles.isNotEmpty()) {
-            drawLiveRoads(snapshot.liveRoadTiles, context.camera)
-        }
     }
 }
 

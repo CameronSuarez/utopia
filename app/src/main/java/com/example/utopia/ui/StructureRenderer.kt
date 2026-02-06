@@ -18,8 +18,7 @@ data class StructureAssets(
     val houseLabelPaint: android.graphics.Paint,
     val houseBitmap: ImageBitmap,
     val tavernBitmap: ImageBitmap,
-    val workshopBitmap: ImageBitmap,
-    val storeBitmap: ImageBitmap,
+    val sawmillBitmap: ImageBitmap,
     val plazaBitmap: ImageBitmap,
     val constructionSiteBitmap: ImageBitmap,
     val lumberjackHutBitmap: ImageBitmap
@@ -50,8 +49,7 @@ fun DrawScope.drawStructureItem(
 
     val bitmap: ImageBitmap? = when (spec.id) {
         "HOUSE" -> assets.houseBitmap
-        "STORE" -> assets.storeBitmap
-        "WORKSHOP" -> assets.workshopBitmap
+        "SAWMILL" -> assets.sawmillBitmap
         "PLAZA" -> assets.plazaBitmap
         "TAVERN" -> assets.tavernBitmap
         "LUMBERJACK_HUT" -> assets.lumberjackHutBitmap
@@ -71,8 +69,6 @@ fun DrawScope.drawStructureItem(
     } else {
         val rng = Random(structure.id.hashCode().toLong())
         when (spec.id) {
-            "CASTLE" -> drawMedievalCastle(screenPos, screenSize.width, screenSize.height, rng)
-            "WALL" -> drawRect(Color(0xFF795548), screenPos, Size(screenSize.width - 1, screenSize.height - 1))
             else -> drawRect(Color(0xFF9CCC65), screenPos, Size(screenSize.width - 1, screenSize.height - 1))
         }
     }

@@ -119,22 +119,12 @@ fun structureHitBoundsWorld(structure: Structure): Rect {
             return Rect(Offset(left, top), Size(width, height))
         }
         
-        if (spec.id == "WORKSHOP") {
+        if (spec.id == "SAWMILL") {
             val width = tileSize * 2f
             val height = tileSize * 2f
             val left = center.x - width / 2f
             val top = structure.y + spec.worldHeight - height
             return Rect(Offset(left, top), Size(width, height))
-        }
-
-        if (spec.id == "STORE") {
-            val width = tileSize * 3f
-            val height = tileSize * 1f
-            val topLeft = Offset(
-                structure.x,
-                structure.y + spec.worldHeight - height
-            )
-            return Rect(topLeft, Size(width, height))
         }
 
         val topLeft = center - Offset(halfTile, halfTile)

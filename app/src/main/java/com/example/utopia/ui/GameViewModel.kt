@@ -21,6 +21,7 @@ import com.example.utopia.domain.NavGrid
 import com.example.utopia.domain.Pathfinding
 import com.example.utopia.domain.WorldManager
 import com.example.utopia.util.Constants
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 sealed interface SelectedStructureInfo {
     val structure: Structure
@@ -120,22 +122,37 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         Log.d("StartupHeartbeat", "GameViewModel.init - START")
-        load()
-        updateNavGrid() // Initial bake
-        startGameLoop()
-        Log.d("StartupHeartbeat", "GameViewModel.init - END")
+        viewModelScope.launch {
+            load()
+            updateNavGrid() // Initial bake
+            startGameLoop()
+            Log.d("StartupHeartbeat", "GameViewModel.init - END")
+        }
     }
 
     fun save() {
-        persistenceManager.save(worldManager)
+        viewModelScope.launch {
+            val data = worldManager.toData()
+            withContext(Dispatchers.IO) {
+                persistenceManager.saveData(data)
+            }
+        }
     }
 
-    fun load() {
-        persistenceManager.load(worldManager)
+    suspend fun load() {
+        val data = withContext(Dispatchers.IO) {
+            persistenceManager.loadData()
+        }
+        if (data != null) {
+            // worldManager.loadData(data)
+        }
     }
 
     override fun onCleared() {
-        save()
+        val data = worldManager.toData()
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            persistenceManager.saveData(data)
+        }
         super.onCleared()
     }
 
@@ -181,7 +198,22 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 // Manual Time Update
                 localTimeOfDay = (localTimeOfDay + deltaSeconds) % totalCycleSec
 
-                worldManager.advanceTick(deltaTime, currentTime)
+                val previousState = worldManager.worldState.value
+                val nextState = withContext(Dispatchers.Default) {
+                    worldManager.computeNextState(previousState, deltaTime, currentTime)
+                }
+                val currentState = worldManager.worldState.value
+                if (currentState === previousState) {
+                    worldManager.applyState(nextState)
+                } else {
+                    val reboundState = currentState
+                    val reboundNext = withContext(Dispatchers.Default) {
+                        worldManager.computeNextState(reboundState, deltaTime, currentTime)
+                    }
+                    if (worldManager.worldState.value === reboundState) {
+                        worldManager.applyState(reboundNext)
+                    }
+                }
 
                 // Batch NavGrid Update
                 val dirtyRect = worldManager.consumeDirtyRect()

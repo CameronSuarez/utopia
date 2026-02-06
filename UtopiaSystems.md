@@ -19,14 +19,17 @@ The application uses a ViewModel-centric approach to manage the game's lifecycle
 
 ### 2.2. Simulation (Domain Layer)
 -   **`WorldManager`**: The primary orchestrator of the simulation.
-    -   **`advanceTick(deltaTimeMs)`**: The main entry point for a single step of the simulation. It runs a series of specialized sub-systems in a defined order. The `simulationPipeline` list defines this execution order, which is critical for preventing stale data issues.
-    -   **`simulationPipeline`**: The `WorldAnalysisSystem` is now run immediately before the `AgentIntentSystemWrapper` to ensure that the `transient_hasAvailableWorkplace` flag is up-to-date when agents calculate their pressures.
+    -   **`advanceTick(deltaTimeMs)`**: The main entry point for a single step of the simulation. It runs a series of specialized sub-systems in a defined order.
+    -   **`simulationPipeline`**: Executes systems in order. The pipeline no longer relies on a `transientHasAvailableWorkplace` flag.
     -   Manages the canonical `WorldState` and is the only class authorized to modify it.
 -   **`WorldState`**: An immutable data class holding all simulation data (agents, structures, tiles, etc.). Any change results in a new `WorldState` instance.
 -   **`PoiSystem`**: A derived system that recomputes POIs and categorized structure indexes when `structureRevision` or `inventoryRevision` changes.
     -   Produces the canonical `pois` list for intent targeting.
     -   Produces a `PoiIndex` that groups structures by role (e.g., incomplete construction sites, resource sources, resource sinks).
--   **`WorldAnalysisSystem`**: A system that computes transient, world-level flags. Its check for `hasAvailableWorkplace` is now unified with the assignment logic in `AgentIntentSystemWrapper` to include an `isComplete` check, ensuring consistency in the definition of an "assignable job".
+-   **`WorldAnalysisSystem`**: A system that computes transient, world-level flags. It does not compute workplace availability.
+-   **`AgentDecisionSystem`**: A merged system that replaces `AgentIntentSystem` and `AgentIntentSystemWrapper`.
+    -   Computes intent, selects targets, and assigns workplaces in a single pass.
+    -   Defines the single source of truth for `canWorkAt`.
 -   **`NavGrid`**: A spatial grid representing the traversable areas of the world for pathfinding. It is updated by `WorldManager` whenever structures or tiles change.
 
 ### 2.3. UI & Rendering (UI Layer)
@@ -45,7 +48,7 @@ The application uses a ViewModel-centric approach to manage the game's lifecycle
 ## 3. Core Data Models
 -   **`StructureSpec`**: Loaded from `structures.json`. Defines the static properties of a structure type (e.g., build cost, production output, capacity, `providesStability`).
 -   **`Structure`**: An instance of a structure in the world. Contains dynamic state like its inventory, build progress, and a `workers` list of assigned agent IDs.
--   **`AgentRuntime`**: An instance of an agent in the world. Contains dynamic state like current needs, intent (goal), `workplaceId`, and `transientPressures`.
+-   **`AgentRuntime`**: An instance of an agent in the world. Contains dynamic state like current needs, intent (goal), `workplaceId`, and intent targets.
 -   **`PoiIndex`**: A derived index of structures and POIs used by systems to query construction sites, sources, and sinks without scanning all structures each tick.
 -   **`PersistenceManager`**: Handles saving and loading the game. It serializes the `WorldState` to and from a JSON file stored on the device.
 
@@ -53,13 +56,22 @@ The application uses a ViewModel-centric approach to manage the game's lifecycle
 
 ## 4. Economic & Agent Logic
 -   **Economy (`EconomySystem.kt`)**: Driven by `StructureSpec` properties. The system processes production, hauling, and construction based on these data definitions.
--   **Agent AI (`AgentIntentSystem.kt`)**: A "pressure" system calculates an agent's desire to perform certain actions.
-    -   **`calculatePressures`**: The pressure for an unemployed agent to seek work (`AgentIntent.Work`) is set to a high value (`0.9f`) to ensure it competes with other pressures.
-    -   **`AgentIntentSystemWrapper`**: This system contains the "demand-driven workplace assignment" logic. It runs after an agent's intent has been selected. If the intent is `Work` and the agent has no `workplaceId`, it finds a valid, complete, and available workplace and updates both the agent's `workplaceId` and the structure's `workers` list.
-    -   **POI-driven targeting**: Construction hauling, resource sources, and resource sinks are resolved through the `PoiIndex` when it is current.
+    -   When a sink is full, the agent retargets to another valid sink in the same tick when possible.
+    -   If no valid sink exists, the agent holds the item and retries next tick without resetting intent.
+    -   UI “Blocked” state uses the same criteria as the economy’s production checks.
+-   **Agent Decision (`AgentDecisionSystem.kt`)**: A direct scoring model replaces the pressure ladder.
+    -   **Single source of truth**: `canWorkAt(structure, state)` is defined here and used for all workability checks.
+    -   **Scoring**:
+        -   **Work**: `1.0` if the agent is unemployed and any workable workplace exists.
+        -   **Construct/Haul**: `0.8` if there are open construction sites and required resources exist.
+        -   **Needs**: Score proportional to deficit for `SeekStability`.
+    -   **Selection**: Highest score wins; no priority ladder.
+    -   **Commitment**: Uses the standard timing rules; no urgent-pressure bypass.
+    -   **Assignment**: Intent selection and assignment happen in the same system pass.
+    -   **Targeting**: Uses `PoiIndex` when current; falls back to direct structure scans when stale or unavailable.
 -   **Physics (`AgentPhysics.kt`)**: The agent physics simulation is driven exclusively by the elapsed time between ticks (`deltaTimeMs`).
-    -   **State Transitions**: An agent's `AgentState` is only set to `WORKING` if their `currentIntent` is `AgentIntent.Work` and they are physically located at their assigned `workplaceId`. This makes the "WORKING" state require a real data assignment, not just physical presence.
-    -   **Intent Satisfaction**: The `isIntentSatisfied` function was corrected to recognize that workplaces like `LUMBERJACK_HUT` and `WORKSHOP` can satisfy the `SeekStability` need, as defined in `structures.json`. This prevents agents from getting stuck in a "traveling" loop.
+    -   **State Transitions**: An agent's `AgentState` is set to `WORKING` when their `currentIntent` is `Work` and they are at the assigned workplace.
+    -   **Intent Satisfaction**: Uses proximity checks and lot rectangles to avoid flicker when agents are near target structures.
 
 ---
 
@@ -73,28 +85,26 @@ The simulation systems (`SystemWrappers.kt`, `EconomySystem.kt`, `AgentPhysics.k
 ---
 
 ## 6. Explicit Changes In This Context
--   **`SimulationSystem`** (`app/src/main/java/com/example/utopia/domain/SimulationSystem.kt`): Added a stable `id` property used for ordering and diagnostics.
--   **`SimulationPipeline`** (`app/src/main/java/com/example/utopia/domain/SimulationPipeline.kt`): Added a container that executes a list of `SimulationSystem` instances in order.
-    -   **`run(state, deltaTimeMs, nowMs)`**: Executes each system sequentially, passing the updated `WorldState` to the next system.
-    -   **`validateOrderInvariants()`**: Enforces the order invariant that `WorldAnalysisSystem` must run before `AgentIntentSystemWrapper`.
--   **`WorldManager`** (`app/src/main/java/com/example/utopia/domain/WorldManager.kt`): `simulationPipeline` is now a `SimulationPipeline` instance, and `advanceTick` delegates execution to `SimulationPipeline.run(...)`.
--   **`SimulationPipelineTest`** (`app/src/test/java/com/example/utopia/domain/SimulationPipelineTest.kt`): Added tests that assert the pipeline order invariant and accept the current ordering.
--   **`AgentPhysics`** (`app/src/main/java/com/example/utopia/domain/AgentPhysics.kt`): `updateAgents`, `updateAgentTick`, and `calculateWanderForce` now take `nowMs`, and wandering randomness is seeded with `nowMs` instead of `System.currentTimeMillis()`.
--   **`AgentPhysicsWrapper`** (`app/src/main/java/com/example/utopia/domain/SystemWrappers.kt`): Passes `nowMs` into `updateAgents`.
--   **`AgentPhysics`** (`app/src/main/java/com/example/utopia/domain/AgentPhysics.kt`): `SeekStability` and `SeekStimulation` state transitions now align with intent satisfaction (stability at `STORE`/`WORKSHOP`/`LUMBERJACK_HUT`, stimulation when `providesStimulation` is true).
--   **`WorldState`** (`app/src/main/java/com/example/utopia/data/models/Models.kt`): `transient_hasAvailableWorkplace` is now `private set`, and updates are done via `withTransientHasAvailableWorkplace(value)` which returns a new `WorldState`.
--   **`WorldAnalysisSystem`** (`app/src/main/java/com/example/utopia/domain/SystemWrappers.kt`): Uses `withTransientHasAvailableWorkplace(value)` instead of mutating state directly.
--   **`WorldAnalysisSystemTest`** (`app/src/test/java/com/example/utopia/domain/WorldAnalysisSystemTest.kt`): Added a unit test asserting that `WorldAnalysisSystem` returns a new state and does not mutate the input state.
--   **`EconomySystem`** (`app/src/main/java/com/example/utopia/domain/EconomySystem.kt`): When a `StoreResource` intent targets a full sink, the agent now resets intent to `Idle` (keeping the carried item) to re-evaluate next tick.
--   **`AgentIntentSystem`** (`app/src/main/java/com/example/utopia/domain/AgentIntentSystem.kt`): `Work` pressure is only applied when the assigned workplace can currently produce or transform; blocked workplaces yield `Work` pressure of 0.
--   **`WorldManager`** (`app/src/main/java/com/example/utopia/domain/WorldManager.kt`): `loadData` now regenerates `pois` from loaded structures instead of trusting `data.pois`.
--   **`structures.json`** (`app/src/main/assets/data/structures.json`): `LUMBERJACK_HUT` now has `providesStimulation: true`.
--   **`PoiSystem`** (`app/src/main/java/com/example/utopia/domain/PoiSystem.kt`): Added a derived POI system that builds `PoiIndex` categories and the canonical `pois` list when `structureRevision` or `inventoryRevision` changes.
--   **`WorldState`** (`app/src/main/java/com/example/utopia/data/models/Models.kt`): Added `poiIndex` (transient) and `inventoryRevision` to track inventory changes for POI indexing.
--   **`WorldStateData`** (`app/src/main/java/com/example/utopia/data/models/Models.kt`): Added `inventoryRevision` for persistence.
--   **`WorldManager`** (`app/src/main/java/com/example/utopia/domain/WorldManager.kt`): `PoiSystem` runs in the simulation pipeline and is used to recompute POIs after load and structure mutations.
--   **`AgentIntentSystem`** (`app/src/main/java/com/example/utopia/domain/AgentIntentSystem.kt`): Construction hauling, resource sourcing, and resource sink selection now use `PoiIndex` when it matches the current revisions.
--   **`EconomySystem`** (`app/src/main/java/com/example/utopia/domain/EconomySystem.kt`): Inventory-changing actions now increment `inventoryRevision`.
--   **`AgentPhysics`** (`app/src/main/java/com/example/utopia/domain/AgentPhysics.kt`): Added a proximity-based target satisfaction check with `TARGET_MARGIN_PX` and the helper `isNearTargetStructure(...)`.
-    -   **`isNearTargetStructure`**: Treats an agent as “at target” when their position is within the target structure’s footprint expanded by a small margin.
-    -   **`intentSatisfiedState` / `isIntentSatisfied`**: Work, construct, and resource-transfer intents now use the proximity check to avoid flickering when agents sit just outside a structure’s influence rectangle.
+
+### System Startup and Data Loading
+-   **`structures.json`**: Corrected a `JsonDecodingException` caused by a trailing comma in the "CASTLE" object definition. This crash occurred during app startup.
+-   **`GameViewModel`**: The logic to load a saved world state via `worldManager.loadData()` has been disabled. This prevents the app from crashing at startup if it tries to load a save file containing data for structures that have been removed from the code.
+-   **`StructureRegistry`**: Is initialized from `assets/data/structures.json` in `MainActivity`. An error in this JSON file was found to be the root cause of a fatal startup crash.
+
+### Structure Removals
+-   The **"CASTLE"**, **"WALL"**, and **"ROAD"** structures have been completely removed from the game.
+-   **`structures.json`**: The JSON object definitions for "CASTLE", "WALL", and "ROAD" were deleted.
+-   **`StructureRenderer.kt`**: The procedural drawing logic for "CASTLE" (`drawMedievalCastle`) and the `drawRect` logic for "WALL" have been removed. The file no longer contains any references to these structures.
+-   **Rendering Pipeline**: All code related to rendering roads has been removed.
+    -   **`CityUI.kt`**: No longer loads `roadBitmapAsset` or computes the `roadBitmap` cache. The `RenderContext` is no longer created with any road-related assets.
+    -   **`CityRenderer.kt`**: The `RoadLayer` has been removed from the list of default layers in the `drawCity` function.
+    -   **`CityLayers.kt`**: The `RoadLayer` class definition has been removed.
+    -   **`RenderingPipeline.kt`**: The `RenderContext` data class no longer contains the `roadBitmap` or `roadAsset` properties.
+
+### Placement Controller
+-   **`PlacementController.kt`**: The controller has been significantly simplified to support only "STAMP" placement behavior.
+    -   All logic related to "STROKE" or "BRUSHING" behavior has been removed. This includes the `BRUSHING` state, the `processStroke` function, and the `getLine` helper function.
+    -   The `liveRoadTiles` property, used for previewing road placement, has been removed.
+-   **Single Stamp Placement**: The behavior for placing a building has been changed. After a single building is successfully placed, the controller now automatically returns to the `IDLE` state, deselecting the active tool. This is achieved by calling `cancel()` instead of transitioning to `ARMED` in the `endPointer` function.
+-   **`CityUI.kt`**: The `pointerInput` gesture handler that previously defaulted to the "ROAD" tool now does nothing if no tool is selected.
+-   **`PlacementUI.kt`**: The UI status text for the `BRUSHING` state has been removed, as the state no longer exists.

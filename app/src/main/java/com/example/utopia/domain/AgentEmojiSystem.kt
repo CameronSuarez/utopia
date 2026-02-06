@@ -22,8 +22,6 @@ object AgentEmojiSystem {
     private val WARM_EMOJIS = listOf("👋", "❤️", "🌻", "🕊️", "🤗")
     private val PLAYFUL_EMOJIS = listOf("\uD83E\uDD21", "\uD83D\uDC51", "🎭", "🎲", "🌟", "\uD83D\uDC14", "\uD83C\uDF1E", "🎠")
     private val CONTEMPLATIVE_EMOJIS = listOf("🤔", "👀", "🥀", "💀", "⛓️", "🧐")
-    private val TRADING_EMOJIS = listOf("💰", "⚖️", "💎", "\uD83E\uDE99", "📜", "\uD83E\uDDF5", "\uD83C\uDF56", "\uD83E\uDDC0")
-
     /**
      * Emission Gate: chance = baseRate × Expressiveness × FieldEnergy
      */
@@ -133,35 +131,6 @@ object AgentEmojiSystem {
                         lifeTime = 2 // Reduced from 3 to allow faster turn-taking
                     )
                 )
-            }
-        }
-
-        // 2. Process non-social, state-based emoji emissions (e.g., Trading)
-        worldState.agents.forEach { agent ->
-            if (agent.state == AgentState.TRADING) {
-                // Don't show a trading emoji if the agent is already part of a social conversation
-                if (nextSignals.any { it.senderId == agent.id }) return@forEach
-
-                // Use the same time-blocking logic as the "stop-and-go" wandering to decide
-                // when to show an emoji. This makes it feel more natural.
-                val timeBlock = nowMs / 3000L
-                val seed = agent.id.hashCode().toLong() + timeBlock
-                val rng = Random(seed)
-                val shouldShowEmoji = rng.nextFloat() < 0.2f // 20% chance per time block
-
-                if (shouldShowEmoji) {
-                    val emoji = TRADING_EMOJIS.random(rng)
-                    nextSignals.add(
-                        EmojiSignal(
-                            id = UUID.randomUUID().toString(),
-                            senderId = agent.id,
-                            emojiType = emoji,
-                            position = SerializableOffset(agent.x, agent.y - 48f),
-                            timestamp = nowMs,
-                            lifeTime = 2
-                        )
-                    )
-                }
             }
         }
 

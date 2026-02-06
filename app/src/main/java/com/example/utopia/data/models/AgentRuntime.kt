@@ -51,6 +51,8 @@ data class AgentRuntime(
     @Transient val noProgressMs: Long = 0L,
     @Transient val repathCooldownUntilMs: Long = 0L,
     @Transient val intentStartTimeMs: Long = 0L,
+    @Transient val lastFailedSinkId: String? = null,
+    @Transient val lastFailedSinkUntilMs: Long = 0L,
     @Transient val lastAffinityDelta: Float = 0f,
     @Transient val affinityDeltaTimerMs: Long = 0L,
     @Transient val state: AgentState = AgentState.IDLE

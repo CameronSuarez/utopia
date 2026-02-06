@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import com.example.utopia.data.models.AppearanceSpec
 import com.example.utopia.data.models.Gender
 import kotlin.random.Random
+import kotlin.math.abs
 
 val SKIN_TONES = arrayOf(
     Color(0xFFFFCCBC),
@@ -60,5 +61,22 @@ fun generateAppearanceSpec(
         bodyHeightMod = bodyHeightMod,
         hasBeard = gender == Gender.MALE && rng.nextFloat() < 0.35f,
         hasHood = rng.nextFloat() < 0.05f
+    )
+}
+
+fun fallbackAppearanceSpec(gender: Gender, seed: Int): AppearanceSpec {
+    val safeSeed = abs(seed)
+    val hairStylePool = if (gender == Gender.MALE) MALE_HAIR_STYLES else FEMALE_HAIR_STYLES
+    val widthT = (safeSeed % 100) / 100f
+    val heightT = ((safeSeed / 7) % 100) / 100f
+    return AppearanceSpec(
+        skinToneId = safeSeed % SKIN_TONES.size,
+        hairColorId = (safeSeed / 3) % HAIR_COLORS.size,
+        tunicColorId = (safeSeed / 5) % TUNIC_COLORS.size,
+        hairStyleId = hairStylePool[safeSeed % hairStylePool.size],
+        bodyWidthMod = if (gender == Gender.MALE) -0.5f + widthT * 3.5f else -1.5f + widthT * 3.0f,
+        bodyHeightMod = if (gender == Gender.MALE) -2f + heightT * 4.0f else -1f + heightT * 4.0f,
+        hasBeard = gender == Gender.MALE && (safeSeed % 10) < 3,
+        hasHood = (safeSeed % 10) == 0
     )
 }

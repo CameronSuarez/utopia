@@ -11,7 +11,7 @@ import com.example.utopia.util.Constants
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-class AgentIntentSystemTest {
+class AgentDecisionSystemTest {
     @Test
     fun selectIntentAppliesHysteresisWithinCommitmentWindow() {
         val nowMs = 10_000L
@@ -29,7 +29,7 @@ class AgentIntentSystemTest {
             transientPressures = pressures
         )
 
-        val selected = AgentIntentSystem.selectIntent(agent, nowMs)
+        val selected = AgentDecisionSystem.selectIntent(agent, nowMs)
 
         assertEquals(AgentIntent.SeekFun, selected)
     }
@@ -51,7 +51,7 @@ class AgentIntentSystemTest {
             transientPressures = pressures
         )
 
-        val selected = AgentIntentSystem.selectIntent(agent, nowMs)
+        val selected = AgentDecisionSystem.selectIntent(agent, nowMs)
 
         assertEquals(AgentIntent.SeekSleep, selected)
     }
@@ -73,8 +73,7 @@ class AgentIntentSystemTest {
                 sleep = 50f,
                 stability = 50f,
                 social = 50f,
-                `fun` = 50f,
-                stimulation = 50f
+                `fun` = 50f
             ),
             socialMemory = SocialMemory(),
             transientPressures = transientPressures,

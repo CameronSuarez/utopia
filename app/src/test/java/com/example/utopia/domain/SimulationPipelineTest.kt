@@ -5,11 +5,11 @@ import org.junit.Test
 
 class SimulationPipelineTest {
     @Test(expected = IllegalArgumentException::class)
-    fun pipelineRequiresWorldAnalysisBeforeAgentIntent() {
+    fun pipelineRequiresPoiSystemBeforeDecisionSystem() {
         SimulationPipeline(
             listOf(
-                AgentIntentSystemWrapper,
-                WorldAnalysisSystem
+                AgentDecisionSystem,
+                PoiSystem
             )
         )
     }
@@ -24,8 +24,9 @@ class SimulationPipelineTest {
                 AgentGossipSystemWrapper,
                 AgentEmojiSystemWrapper,
                 AgentRelationshipSystemWrapper,
+                PoiSystem,
                 WorldAnalysisSystem,
-                AgentIntentSystemWrapper,
+                AgentDecisionSystem,
                 EconomySystemWrapper,
                 StaleTargetCleanupSystem
             )

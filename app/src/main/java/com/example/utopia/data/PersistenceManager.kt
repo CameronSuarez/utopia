@@ -2,7 +2,6 @@ package com.example.utopia.data
 
 import android.content.Context
 import com.example.utopia.data.models.WorldStateData
-import com.example.utopia.domain.WorldManager
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -14,9 +13,8 @@ class PersistenceManager(private val context: Context) {
         encodeDefaults = true // Important for ensuring all fields are saved
     }
 
-    fun save(worldManager: WorldManager) {
+    fun saveData(data: WorldStateData) {
         try {
-            val data = worldManager.toData()
             val jsonString = json.encodeToString(data)
             File(context.filesDir, fileName).writeText(jsonString)
         } catch (e: Exception) {
@@ -24,16 +22,16 @@ class PersistenceManager(private val context: Context) {
         }
     }
 
-    fun load(worldManager: WorldManager) {
+    fun loadData(): WorldStateData? {
         try {
             val file = File(context.filesDir, fileName)
             if (file.exists()) {
                 val jsonString = file.readText()
-                val data = json.decodeFromString<WorldStateData>(jsonString)
-                worldManager.loadData(data)
+                return json.decodeFromString<WorldStateData>(jsonString)
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
+        return null
     }
 }

@@ -31,13 +31,11 @@ fun DrawScope.drawPropItem(prop: PropInstance, camera: Camera2D, assets: PropAss
     // Select the correct bitmap
     val bitmap = when (propType) {
         PropType.TREE_1 -> assets.tree1
-        else -> return
     }
 
     // 1. Determine the target width in world units (based on TILE_SIZE)
     val targetWWorld = when (propType) {
         PropType.TREE_1 -> TREE_WIDTH_TILES * Constants.TILE_SIZE
-        else -> return
     }
 
     // 2. Compute screen dimensions while preserving aspect ratio (no distortion)

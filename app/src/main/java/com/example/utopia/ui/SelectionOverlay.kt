@@ -12,7 +12,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -20,10 +19,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.utopia.data.models.Structure
 import com.example.utopia.data.models.WorldState
+import com.example.utopia.domain.AgentDecisionSystem
+import com.example.utopia.domain.EconomySystem
 import com.example.utopia.util.Constants
-
-private const val OWNERSHIP_MARGIN_X = 2
-private const val OWNERSHIP_MARGIN_Y = 3
 
 @Composable
 fun SelectionOverlay(viewModel: GameViewModel) {
@@ -54,6 +52,8 @@ fun BuildingInfoPanel(building: Structure, worldState: WorldState, screenPos: Of
             Spacer(modifier = Modifier.height(8.dp))
             ProductionInfo(building)
             Spacer(modifier = Modifier.height(8.dp))
+            ConstructionInfo(building)
+            Spacer(modifier = Modifier.height(8.dp))
             InventoryInfo(building)
             Spacer(modifier = Modifier.height(8.dp))
             WorkersInfo(building, worldState)
@@ -75,13 +75,8 @@ fun StatusHeader(building: Structure) {
         state = "Under Construction"
         reason = "Waiting for builders and materials."
     } else if (building.spec.produces.isNotEmpty()) {
-        val inventoryFull = building.inventory.any { (type, quantity) ->
-            val capacity = building.spec.inventoryCapacity[type] ?: 0
-            quantity >= capacity
-        }
-        val missingInputs = building.spec.consumes.any { (type, amount) ->
-            (building.inventory[type] ?: 0) < amount
-        }
+        val inventoryFull = EconomySystem.isOutputCapped(building)
+        val missingInputs = EconomySystem.isMissingInputs(building)
 
         if (inventoryFull) {
             state = "Blocked"
@@ -104,8 +99,18 @@ fun StatusHeader(building: Structure) {
     Text(building.customName ?: building.spec.id, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
     Text("ID: ${building.id.substring(0, 8)} at ($gx, $gy)", color = Color.Gray, fontSize = 10.sp)
     Text("State: $state", color = Color.White, fontSize = 12.sp)
-    if (building.spec.produces.isNotEmpty()) {
-        Text("Recipe: ${building.spec.produces.keys.joinToString()}", color = Color.White, fontSize = 12.sp)
+    if (building.spec.produces.isNotEmpty() || building.spec.consumes.isNotEmpty()) {
+        val inputs = if (building.spec.consumes.isNotEmpty()) {
+            "in: " + building.spec.consumes.keys.joinToString()
+        } else {
+            "in: none"
+        }
+        val outputs = if (building.spec.produces.isNotEmpty()) {
+            "out: " + building.spec.produces.keys.joinToString()
+        } else {
+            "out: none"
+        }
+        Text("Recipe: $inputs / $outputs", color = Color.White, fontSize = 12.sp)
     }
     Text("Workers: ${building.workers.size} / ${building.spec.capacity}", color = Color.White, fontSize = 12.sp)
     Text(reason, color = Color.Yellow, fontSize = 10.sp)
@@ -113,20 +118,41 @@ fun StatusHeader(building: Structure) {
 
 @Composable
 fun ProductionInfo(building: Structure) {
-    if (building.spec.productionIntervalMs <= 0) return
+    if (building.spec.produces.isEmpty() && building.spec.consumes.isEmpty()) return
 
     Column {
         Text("Production", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
 
-        val progress = (building.productionAccMs.toFloat() / building.spec.productionIntervalMs) * 100
-        val nextOutputMs = building.spec.productionIntervalMs - building.productionAccMs
+        if (building.spec.productionIntervalMs > 0) {
+            val progress = (building.productionAccMs.toFloat() / building.spec.productionIntervalMs) * 100
+            val nextOutputMs = building.spec.productionIntervalMs - building.productionAccMs
 
-        Text("Interval: ${building.spec.productionIntervalMs}ms", fontSize = 10.sp, color = Color.LightGray)
-        building.spec.maxEffectiveWorkers?.let {
-            Text("Max effective workers: $it", fontSize = 10.sp, color = Color.LightGray)
+            Text("Interval: ${building.spec.productionIntervalMs}ms", fontSize = 10.sp, color = Color.LightGray)
+            building.spec.maxEffectiveWorkers?.let {
+                Text("Max effective workers: $it", fontSize = 10.sp, color = Color.LightGray)
+            }
+            Text("Accumulator: ${building.productionAccMs}ms (${"%.1f".format(progress)}%)", fontSize = 10.sp, color = Color.LightGray)
+            Text("Next output in: ${nextOutputMs}ms", fontSize = 10.sp, color = Color.LightGray)
+        } else {
+            Text("Interval: none", fontSize = 10.sp, color = Color.LightGray)
         }
-        Text("Accumulator: ${building.productionAccMs}ms (${"%.1f".format(progress)}%)", fontSize = 10.sp, color = Color.LightGray)
-        Text("Next output in: ${nextOutputMs}ms", fontSize = 10.sp, color = Color.LightGray)
+    }
+}
+
+@Composable
+fun ConstructionInfo(building: Structure) {
+    if (building.isComplete) return
+
+    Column {
+        Text("Construction", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
+        Text("Progress: ${"%.1f".format(building.buildProgress)}%", fontSize = 10.sp, color = Color.LightGray)
+        Text("Build started: ${building.buildStarted}", fontSize = 10.sp, color = Color.LightGray)
+        if (building.spec.buildCost.isNotEmpty()) {
+            building.spec.buildCost.forEach { (resourceType, required) ->
+                val delivered = building.inventory[resourceType] ?: 0
+                Text("$resourceType: $delivered / $required", fontSize = 10.sp, color = Color.LightGray)
+            }
+        }
     }
 }
 
@@ -148,7 +174,7 @@ fun InventoryInfo(building: Structure) {
 fun WorkersInfo(building: Structure, worldState: WorldState) {
     if (building.spec.capacity <= 0) return
 
-    val lotRect = getLotRect(building)
+    val lotRect = building.getInfluenceRect()
     val agentsInLotCount = worldState.agents.count { lotRect.contains(it.position.toOffset()) }
 
     Column {
@@ -190,7 +216,8 @@ fun DebugInfo(building: Structure, worldState: WorldState) {
     val isEligible = building.isComplete &&
             (building.spec.produces.isNotEmpty() || building.spec.consumes.isNotEmpty()) &&
             building.spec.capacity > 0 &&
-            building.workers.size < building.spec.capacity
+            building.workers.size < building.spec.capacity &&
+            AgentDecisionSystem.canWorkAt(building)
     val openSlots = building.spec.capacity - building.workers.size
 
     Column {
@@ -199,7 +226,7 @@ fun DebugInfo(building: Structure, worldState: WorldState) {
         Text("eligibleWorkplace: $isEligible", fontSize = 9.sp, color = if (isEligible) Color.Green else Color.Red, fontFamily = FontFamily.Monospace)
         Text("openSlots: $openSlots", fontSize = 9.sp, color = Color.Cyan, fontFamily = FontFamily.Monospace)
         Text("Assigned IDs: [${building.workers.joinToString { it.substring(0, 4) }}]", fontSize = 9.sp, color = Color.Cyan, fontFamily = FontFamily.Monospace)
-        val lotRect = getLotRect(building)
+        val lotRect = building.getInfluenceRect()
         Text("Lot Rect: [${lotRect.left.toInt()}, ${lotRect.top.toInt()}, ${lotRect.right.toInt()}, ${lotRect.bottom.toInt()}]", fontSize = 9.sp, color = Color.Cyan, fontFamily = FontFamily.Monospace)
         worldState.agents.find { it.workplaceId == building.id }?.let { agent ->
              Text("Agent '${agent.name}' Pos: (${agent.position.x.toInt()}, ${agent.position.y.toInt()})", fontSize = 9.sp, color = Color.Cyan, fontFamily = FontFamily.Monospace)
@@ -209,12 +236,3 @@ fun DebugInfo(building: Structure, worldState: WorldState) {
 }
 
 
-private fun getLotRect(structure: Structure): Rect {
-    val footprintRect = structure.getWorldFootprint()
-    return Rect(
-        left = footprintRect.left - OWNERSHIP_MARGIN_X * Constants.TILE_SIZE,
-        top = footprintRect.top - OWNERSHIP_MARGIN_Y * Constants.TILE_SIZE,
-        right = footprintRect.right + OWNERSHIP_MARGIN_X * Constants.TILE_SIZE,
-        bottom = footprintRect.bottom + OWNERSHIP_MARGIN_Y * Constants.TILE_SIZE
-    )
-}

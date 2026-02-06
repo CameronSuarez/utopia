@@ -5,11 +5,7 @@ import com.example.utopia.data.models.WorldState
 
 object WorldAnalysisSystem : SimulationSystem {
     override fun update(state: WorldState, deltaTimeMs: Long, nowMs: Long): WorldState {
-        val hasAvailableWorkplace = state.structures.any {
-            it.isComplete && (it.spec.produces.isNotEmpty() || it.spec.consumes.isNotEmpty()) &&
-                    it.spec.capacity > 0 && it.workers.size < it.spec.capacity
-        }
-        return state.withTransientHasAvailableWorkplace(hasAvailableWorkplace)
+        return state
     }
 }
 
@@ -77,59 +73,9 @@ object AgentRelationshipSystemWrapper : SimulationSystem {
     }
 }
 
-object AgentIntentSystemWrapper : SimulationSystem {
-    override fun update(state: WorldState, deltaTimeMs: Long, nowMs: Long): WorldState {
-        // 1. Standard intent selection
-        val agents = state.agents.map { agent ->
-            val pressures = AgentIntentSystem.calculatePressures(agent, state)
-            val nextIntent = AgentIntentSystem.selectIntent(agent.copy(transientPressures = pressures), nowMs)
-            val intentChanged = nextIntent != agent.currentIntent
-
-            agent.copy(
-                transientPressures = pressures,
-                currentIntent = nextIntent,
-                intentStartTimeMs = if (intentChanged) nowMs else agent.intentStartTimeMs
-            )
-        }
-        
-        var changed = false
-        val mutableAgents = agents.toMutableList()
-        val mutableStructures = state.structures.toMutableList()
-
-        // 2. Demand-driven workplace assignment
-        for (i in mutableAgents.indices) {
-            val agent = mutableAgents[i]
-            if (agent.currentIntent == AgentIntent.Work && agent.workplaceId == null) {
-                
-                val availableWorkplace = mutableStructures.find { s ->
-                    s.isComplete && (s.spec.produces.isNotEmpty() || s.spec.consumes.isNotEmpty()) &&
-                            s.spec.capacity > 0 && s.workers.size < s.spec.capacity
-                }
-                
-                if (availableWorkplace != null) {
-                    val structIdx = mutableStructures.indexOfFirst { it.id == availableWorkplace.id }
-                    mutableStructures[structIdx] = availableWorkplace.copy(workers = availableWorkplace.workers + agent.id)
-                    mutableAgents[i] = agent.copy(workplaceId = availableWorkplace.id)
-                    changed = true
-                } else {
-                    // No job available, revert intent to prevent getting stuck
-                    mutableAgents[i] = agent.copy(currentIntent = AgentIntent.Idle)
-                    changed = true
-                }
-            }
-        }
-        
-        return if (changed) {
-            state.copy(agents = mutableAgents, structures = mutableStructures)
-        } else {
-            state.copy(agents = agents)
-        }
-    }
-}
-
 object EconomySystemWrapper : SimulationSystem {
     override fun update(state: WorldState, deltaTimeMs: Long, nowMs: Long): WorldState {
-        return EconomySystem.processEconomy(state, deltaTimeMs)
+        return EconomySystem.processEconomy(state, deltaTimeMs, nowMs)
     }
 }
 

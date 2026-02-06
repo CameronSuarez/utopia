@@ -1,6 +1,7 @@
 package com.example.utopia.domain
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import com.example.utopia.data.models.AgentIntent
 import com.example.utopia.data.models.AgentRuntime
 import com.example.utopia.data.models.AgentState
@@ -56,7 +57,7 @@ private fun updateAgentTick(
 
     val deltaSeconds = deltaTimeMs / 1000f
 
-    val intentForce = calculateIntentForce(agent, worldState)
+    val intentForce = calculateIntentForce(agent, worldState, navGrid)
     val separationForce = calculateSeparationForce(agent, worldState.agents)
     val wanderForce = calculateWanderForce(agent, nowMs)
 
@@ -89,14 +90,13 @@ private fun updateAgentTick(
     val intentSatisfiedState = when (val intent = agent.currentIntent) {
         AgentIntent.SeekSleep -> if (structure?.spec?.providesSleep == true) AgentState.SLEEPING else null
         AgentIntent.SeekFun -> if (structure?.spec?.providesFun == true) AgentState.HAVING_FUN else null
-        AgentIntent.SeekStability -> if (structure?.spec?.id == "STORE" || structure?.spec?.id == "WORKSHOP" || structure?.spec?.id == "LUMBERJACK_HUT") AgentState.TRADING else null
-        AgentIntent.SeekStimulation -> if (structure?.spec?.providesStimulation == true) AgentState.TRADING else null
-        is AgentIntent.Construct -> if (isNearTargetStructure(worldState, agent, intent.targetId)) AgentState.WORKING else null
-        is AgentIntent.GetResource -> if (isNearTargetStructure(worldState, agent, intent.targetId)) AgentState.WORKING else null
-        is AgentIntent.StoreResource -> if (isNearTargetStructure(worldState, agent, intent.targetId)) AgentState.WORKING else null
+        AgentIntent.SeekStability -> null
+        is AgentIntent.Construct -> if (isInsideTargetLot(worldState, agent, intent.targetId)) AgentState.WORKING else null
+        is AgentIntent.GetResource -> if (isInsideTargetLot(worldState, agent, intent.targetId)) AgentState.WORKING else null
+        is AgentIntent.StoreResource -> if (isInsideTargetLot(worldState, agent, intent.targetId)) AgentState.WORKING else null
         AgentIntent.Work -> {
-            // An agent is only truly WORKING if they have the Work intent AND are at their assigned workplace.
-            if (agent.workplaceId != null && isNearTargetStructure(worldState, agent, agent.workplaceId)) {
+            // An agent is only truly WORKING if they have the Work intent AND are at their assigned workplace lot.
+            if (agent.workplaceId != null && isInsideTargetLot(worldState, agent, agent.workplaceId)) {
                 AgentState.WORKING
             } else {
                 null
@@ -123,7 +123,7 @@ private fun updateAgentTick(
 private fun isIntentSatisfied(agent: AgentRuntime, worldState: WorldState): Boolean {
     val structure = worldState.getInfluencingStructure(agent.position.toOffset())
     return when (val intent = agent.currentIntent) {
-        AgentIntent.Work -> agent.workplaceId != null && isNearTargetStructure(worldState, agent, agent.workplaceId)
+        AgentIntent.Work -> agent.workplaceId != null && isInsideTargetLot(worldState, agent, agent.workplaceId)
         AgentIntent.SeekSleep -> {
             if (agent.homeId != null) {
                 isNearTargetStructure(worldState, agent, agent.homeId)
@@ -132,13 +132,12 @@ private fun isIntentSatisfied(agent: AgentRuntime, worldState: WorldState): Bool
             }
         }
         AgentIntent.SeekFun -> structure?.spec?.providesFun == true
-        AgentIntent.SeekStability -> structure?.spec?.id == "STORE" || structure?.spec?.id == "WORKSHOP" || structure?.spec?.id == "LUMBERJACK_HUT"
-        AgentIntent.SeekStimulation -> structure?.spec?.providesStimulation == true
+        AgentIntent.SeekStability -> structure?.spec?.id == "SAWMILL" || structure?.spec?.id == "LUMBERJACK_HUT"
         is AgentIntent.GetResource, is AgentIntent.StoreResource -> {
             val targetId = if (intent is AgentIntent.GetResource) intent.targetId else (intent as AgentIntent.StoreResource).targetId
-            isNearTargetStructure(worldState, agent, targetId)
+            isInsideTargetLot(worldState, agent, targetId)
         }
-        is AgentIntent.Construct -> isNearTargetStructure(worldState, agent, intent.targetId)
+        is AgentIntent.Construct -> isInsideTargetLot(worldState, agent, intent.targetId)
         else -> false
     }
 }
@@ -153,13 +152,33 @@ private fun isNearTargetStructure(worldState: WorldState, agent: AgentRuntime, t
             pos.y <= footprint.bottom + TARGET_MARGIN_PX
 }
 
-private fun calculateIntentForce(agent: AgentRuntime, worldState: WorldState): Offset {
+private fun isInsideTargetLot(worldState: WorldState, agent: AgentRuntime, targetId: String): Boolean {
+    val target = worldState.structures.find { it.id == targetId } ?: return false
+    return target.getInfluenceRect().contains(agent.position.toOffset())
+}
+
+private fun Rect.closestPointTo(pos: Offset): Offset {
+    val x = pos.x.coerceIn(left, right)
+    val y = pos.y.coerceIn(top, bottom)
+    return Offset(x, y)
+}
+
+private fun calculateIntentForce(agent: AgentRuntime, worldState: WorldState, navGrid: NavGrid): Offset {
     val intent = agent.currentIntent
     if (intent is AgentIntent.Idle || intent is AgentIntent.Wandering || isIntentSatisfied(agent, worldState)) {
         return Offset.Zero
     }
 
     val pos = agent.position.toOffset()
+
+    val targetStructureId = when (intent) {
+        is AgentIntent.GetResource -> intent.targetId
+        is AgentIntent.StoreResource -> intent.targetId
+        is AgentIntent.Construct -> intent.targetId
+        AgentIntent.Work -> agent.workplaceId
+        AgentIntent.SeekSleep -> agent.homeId
+        else -> null
+    }
 
     val targetStructure = when (intent) {
         is AgentIntent.GetResource -> worldState.structures.find { it.id == intent.targetId }
@@ -171,10 +190,42 @@ private fun calculateIntentForce(agent: AgentRuntime, worldState: WorldState): O
     }
 
     if (targetStructure != null) {
-        val targetPos = Offset(targetStructure.x + targetStructure.spec.worldWidth / 2, targetStructure.y - targetStructure.spec.worldHeight / 2)
+        val targetPos = Pathfinding.pickWalkableTileForStructure(targetStructure, pos, navGrid)
+
         val toTarget = targetPos.minus(pos)
         val dist = toTarget.getDistance()
-        return if (dist > 5f) toTarget.div(dist).times(Constants.INTENT_FORCE * Constants.TILE_SIZE) else Offset.Zero
+        if (dist <= 5f) return Offset.Zero
+
+        val dir = toTarget.div(dist)
+        val probeDistance = Constants.TILE_SIZE + agent.collisionRadius
+        val probe = pos.plus(dir.times(probeDistance))
+        val probeGX = (probe.x / Constants.TILE_SIZE).toInt()
+        val probeGY = (probe.y / Constants.TILE_SIZE).toInt()
+
+        if (!navGrid.isWalkable(probeGX, probeGY)) {
+            val (path, _, _) = Pathfinding.planRoute(
+                startPos = pos,
+                targetStructureId = targetStructureId,
+                targetWorldPos = targetPos,
+                navGrid = navGrid,
+                structures = worldState.structures,
+                requiredClearance = agent.collisionRadius
+            )
+            val nextWaypoint = when {
+                path.size >= 2 -> path[1]
+                path.size == 1 -> path[0]
+                else -> null
+            }
+            if (nextWaypoint != null) {
+                val toWaypoint = nextWaypoint.minus(pos)
+                val d = toWaypoint.getDistance()
+                if (d > 1f) {
+                    return toWaypoint.div(d).times(Constants.INTENT_FORCE * Constants.TILE_SIZE)
+                }
+            }
+        }
+
+        return toTarget.div(dist).times(Constants.INTENT_FORCE * Constants.TILE_SIZE)
     }
 
     val targetPoi = worldState.pois
@@ -182,8 +233,7 @@ private fun calculateIntentForce(agent: AgentRuntime, worldState: WorldState): O
             when (intent) {
                 AgentIntent.SeekSleep -> poi.type == PoiType.HOUSE || poi.type == PoiType.CASTLE
                 AgentIntent.SeekFun -> poi.type == PoiType.TAVERN || poi.type == PoiType.PLAZA
-                AgentIntent.SeekStimulation -> poi.type == PoiType.STORE || poi.type == PoiType.WORKSHOP || poi.type == PoiType.CASTLE || poi.type == PoiType.LUMBERJACK_HUT
-                AgentIntent.SeekStability -> poi.type == PoiType.STORE || poi.type == PoiType.WORKSHOP || poi.type == PoiType.LUMBERJACK_HUT
+                AgentIntent.SeekStability -> poi.type == PoiType.SAWMILL || poi.type == PoiType.LUMBERJACK_HUT
                 else -> false
             }
         }
@@ -222,8 +272,6 @@ private fun calculateWanderForce(agent: AgentRuntime, nowMs: Long): Offset {
     val isIdleWandering = agent.state == AgentState.IDLE &&
             (agent.currentIntent == AgentIntent.Idle || agent.currentIntent == AgentIntent.Wandering)
     val isFunWandering = agent.state == AgentState.HAVING_FUN && agent.currentIntent == AgentIntent.SeekFun
-    val isTradingWandering = agent.state == AgentState.TRADING
-
     if (isIdleWandering) {
         val seed = agent.id.hashCode().toLong() + (nowMs / 2000)
         val rng = Random(seed)
@@ -231,7 +279,7 @@ private fun calculateWanderForce(agent: AgentRuntime, nowMs: Long): Offset {
             .times(Constants.WANDER_FORCE * Constants.TILE_SIZE)
     }
 
-    if (isFunWandering || isTradingWandering) {
+    if (isFunWandering) {
         val timeBlock = nowMs / 1500L
         val seed = agent.id.hashCode().toLong() + timeBlock
         val rng = Random(seed)

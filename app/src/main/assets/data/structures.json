@@ -1,23 +1,5 @@
 [
   {
-    "id": "ROAD",
-    "behavior": "STROKE",
-    "spriteWidthPx": 16.0,
-    "spriteHeightPx": 16.0,
-    "blocksNavigation": false,
-    "capacity": 0,
-    "baselineTileY": 0
-  },
-  {
-    "id": "WALL",
-    "behavior": "STROKE",
-    "spriteWidthPx": 16.0,
-    "spriteHeightPx": 16.0,
-    "blocksNavigation": true,
-    "capacity": 0,
-    "baselineTileY": 0
-  },
-  {
     "id": "HOUSE",
     "behavior": "STAMP",
     "spriteWidthPx": 138.8625,
@@ -31,26 +13,14 @@
     }
   },
   {
-    "id": "STORE",
-    "behavior": "STAMP",
-    "spriteWidthPx": 104.19,
-    "spriteHeightPx": 80.9025,
-    "blocksNavigation": true,
-    "capacity": 0,
-    "baselineTileY": 2,
-    "providesStability": true,
-    "providesStimulation": true
-  },
-  {
-    "id": "WORKSHOP",
+    "id": "SAWMILL",
     "behavior": "STAMP",
     "spriteWidthPx": 159.735,
     "spriteHeightPx": 107.8125,
     "blocksNavigation": true,
-    "capacity": 0,
+    "capacity": 1,
     "baselineTileY": 2,
     "providesStability": true,
-    "providesStimulation": true,
     "consumes": {
       "WOOD": 1
     },
@@ -61,17 +31,6 @@
       "WOOD": 10,
       "PLANKS": 10
     }
-  },
-  {
-    "id": "CASTLE",
-    "behavior": "STAMP",
-    "spriteWidthPx": 124.2,
-    "spriteHeightPx": 131.1,
-    "blocksNavigation": true,
-    "capacity": 4,
-    "baselineTileY": 4,
-    "providesSleep": true,
-    "providesStimulation": true
   },
   {
     "id": "PLAZA",
@@ -99,12 +58,11 @@
     "spriteWidthPx": 159.735,
     "spriteHeightPx": 107.8125,
     "blocksNavigation": true,
-    "capacity": 2,
+    "capacity": 1,
     "baselineTileY": 2,
     "providesStability": true,
-    "providesStimulation": true,
     "productionIntervalMs": 5000,
-    "maxEffectiveWorkers": 2,
+    "maxEffectiveWorkers": 1,
     "produces": {
       "WOOD": 1
     },

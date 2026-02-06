@@ -13,7 +13,6 @@ sealed class AgentIntent {
     object SeekSleep : AgentIntent() { override fun toString(): String = "SeekSleep" }
     object SeekFun : AgentIntent() { override fun toString(): String = "SeekFun" }
     object SeekStability : AgentIntent() { override fun toString(): String = "SeekStability" }
-    object SeekStimulation : AgentIntent() { override fun toString(): String = "SeekStimulation" }
     object Idle : AgentIntent() { override fun toString(): String = "Idle" }
     object Wandering : AgentIntent() { override fun toString(): String = "Wandering" }
     object Work : AgentIntent() { override fun toString(): String = "Work" }
@@ -34,7 +33,6 @@ sealed class AgentIntent {
                 SeekSleep -> "seek_sleep"
                 SeekFun -> "seek_fun"
                 SeekStability -> "seek_stability"
-                SeekStimulation -> "seek_stimulation"
                 Idle -> "Idle"
                 Wandering -> "Wandering"
                 Work -> "Work"
@@ -52,7 +50,6 @@ sealed class AgentIntent {
                 "seek_sleep" -> SeekSleep
                 "seek_fun" -> SeekFun
                 "seek_stability" -> SeekStability
-                "seek_stimulation" -> SeekStimulation
                 "Idle", "IDLE" -> Idle // Handle legacy "IDLE" from save files
                 "Wandering" -> Wandering
                 "Work" -> Work
